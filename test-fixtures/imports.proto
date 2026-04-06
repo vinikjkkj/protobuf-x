@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package test.imports;
+
+import "simple.proto";
+
+message UserProfile {
+  test.User user = 1;
+  string bio = 2;
+  string avatar_url = 3;
+}

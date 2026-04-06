@@ -1,0 +1,35 @@
+{
+  "name": "@protobuf-x/codegen",
+  "version": "0.1.0",
+  "description": "Code generator CLI for protobuf-x - generates TypeScript/JavaScript from .proto files",
+  "type": "module",
+  "bin": {
+    "protobuf-x": "./dist/bin/protobuf-x.js"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.cts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "files": ["dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsx ../../scripts/build.ts codegen",
+    "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@protobuf-x/parser": "0.1.0"
+  },
+  "sideEffects": false,
+  "license": "MIT"
+}

@@ -1,0 +1,55 @@
+{
+  "name": "@protobuf-x/runtime",
+  "version": "0.1.0",
+  "description": "High-performance protobuf runtime with zero-copy, streaming, and zero-allocation support",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.cts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    },
+    "./minimal": {
+      "import": {
+        "types": "./dist/esm/minimal.d.ts",
+        "default": "./dist/esm/minimal.js"
+      },
+      "require": {
+        "types": "./dist/cjs/minimal.d.cts",
+        "default": "./dist/cjs/minimal.cjs"
+      }
+    },
+    "./binary": {
+      "import": "./dist/esm/binary/index.js",
+      "require": "./dist/cjs/binary/index.cjs"
+    },
+    "./streaming": {
+      "import": "./dist/esm/streaming/index.js",
+      "require": "./dist/cjs/streaming/index.cjs"
+    },
+    "./util": {
+      "import": "./dist/esm/util/index.js",
+      "require": "./dist/cjs/util/index.cjs"
+    },
+    "./pool": {
+      "import": "./dist/esm/pool/index.js",
+      "require": "./dist/cjs/pool/index.cjs"
+    }
+  },
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "files": ["dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsx ../../scripts/build.ts runtime",
+    "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "sideEffects": false,
+  "license": "MIT"
+}

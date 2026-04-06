@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package test.alltypes;
+
+message AllTypes {
+  double double_val = 1;
+  float float_val = 2;
+  int32 int32_val = 3;
+  int64 int64_val = 4;
+  uint32 uint32_val = 5;
+  uint64 uint64_val = 6;
+  sint32 sint32_val = 7;
+  sint64 sint64_val = 8;
+  fixed32 fixed32_val = 9;
+  fixed64 fixed64_val = 10;
+  sfixed32 sfixed32_val = 11;
+  sfixed64 sfixed64_val = 12;
+  bool bool_val = 13;
+  string string_val = 14;
+  bytes bytes_val = 15;
+}
+
+message RepeatedTypes {
+  repeated int32 values = 1;
+  repeated string names = 2;
+  repeated AllTypes messages = 3;
+}
+
+message MapTypes {
+  map<string, int32> string_int_map = 1;
+  map<int32, string> int_string_map = 2;
+  map<string, AllTypes> string_msg_map = 3;
+}
+
+enum Status {
+  UNKNOWN = 0;
+  ACTIVE = 1;
+  INACTIVE = 2;
+  DELETED = 3;
+}
+
+message WithEnum {
+  string name = 1;
+  Status status = 2;
+}
+
+message WithOneof {
+  string name = 1;
+  oneof value {
+    string text = 2;
+    int32 number = 3;
+    bool flag = 4;
+  }
+}

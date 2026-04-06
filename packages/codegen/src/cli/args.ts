@@ -1,0 +1,163 @@
+/**
+ * Zero-dependency CLI argument parser for protobuf-x.
+ */
+
+export interface ParsedArgs {
+    /** Output directory (required). */
+    out: string
+    /** Target output format. */
+    target: 'ts' | 'js' | 'both'
+    /** Additional import search paths. */
+    importPaths: string[]
+    /** Override the runtime package name. */
+    runtimePackage: string
+    /**
+     * Skip generating toJSON/fromJSON + JSON interfaces. Smaller output for
+     * apps that only use binary serialization. Auto-enabled when runtime-package
+     * targets /minimal.
+     */
+    noJson: boolean
+    /** Positional .proto file paths. */
+    files: string[]
+    /** Whether --help was passed. */
+    help: boolean
+    /** Whether --version was passed. */
+    version: boolean
+}
+
+export class ArgError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'ArgError'
+    }
+}
+
+const HELP_TEXT = `
+Usage: protobuf-x [options] <file.proto ...>
+
+Options:
+  -o, --out <dir>              Output directory (required)
+  -t, --target <type>          Output target: "ts" | "js" | "both" (default: "ts")
+      --import-path <path>     Additional import search path (can be repeated)
+      --runtime-package <name> Override runtime package name
+                               (default: "@protobuf-x/runtime")
+      --no-json                Skip generating toJSON/fromJSON + JSON interfaces
+                               (auto-enabled when targeting @protobuf-x/runtime/minimal)
+  -h, --help                   Show this help message
+  -v, --version                Show version
+
+Examples:
+  protobuf-x -o ./gen ./protos/user.proto
+  protobuf-x --out ./gen --target both ./protos/*.proto
+`.trim()
+
+export function getHelpText(): string {
+    return HELP_TEXT
+}
+
+export function parseArgs(argv: string[]): ParsedArgs {
+    const result: ParsedArgs = {
+        out: '',
+        target: 'ts',
+        importPaths: [],
+        runtimePackage: '@protobuf-x/runtime',
+        noJson: false,
+        files: [],
+        help: false,
+        version: false
+    }
+
+    let i = 0
+    while (i < argv.length) {
+        const arg = argv[i]!
+
+        if (arg === '-h' || arg === '--help') {
+            result.help = true
+            i++
+            continue
+        }
+
+        if (arg === '-v' || arg === '--version') {
+            result.version = true
+            i++
+            continue
+        }
+
+        if (arg === '-o' || arg === '--out') {
+            i++
+            const val = argv[i]
+            if (val === undefined || val.startsWith('-')) {
+                throw new ArgError('Missing value for --out')
+            }
+            result.out = val
+            i++
+            continue
+        }
+
+        if (arg === '-t' || arg === '--target') {
+            i++
+            const val = argv[i]
+            if (val !== 'ts' && val !== 'js' && val !== 'both') {
+                throw new ArgError(`Invalid target "${val ?? ''}". Must be "ts", "js", or "both".`)
+            }
+            result.target = val
+            i++
+            continue
+        }
+
+        if (arg === '--import-path') {
+            i++
+            const val = argv[i]
+            if (val === undefined || val.startsWith('-')) {
+                throw new ArgError('Missing value for --import-path')
+            }
+            result.importPaths.push(val)
+            i++
+            continue
+        }
+
+        if (arg === '--runtime-package') {
+            i++
+            const val = argv[i]
+            if (val === undefined || val.startsWith('-')) {
+                throw new ArgError('Missing value for --runtime-package')
+            }
+            result.runtimePackage = val
+            i++
+            continue
+        }
+
+        if (arg === '--no-json') {
+            result.noJson = true
+            i++
+            continue
+        }
+
+        if (arg.startsWith('-')) {
+            throw new ArgError(`Unknown option: ${arg}`)
+        }
+
+        // Positional argument - proto file
+        result.files.push(arg)
+        i++
+    }
+
+    return result
+}
+
+/**
+ * Validate parsed args for required fields.
+ * Returns an error message or null if valid.
+ */
+export function validateArgs(args: ParsedArgs): string | null {
+    if (args.help || args.version) {
+        return null
+    }
+    if (!args.out) {
+        return 'Missing required option: --out <dir>'
+    }
+    if (args.files.length === 0) {
+        return 'No .proto files specified'
+    }
+    return null
+}

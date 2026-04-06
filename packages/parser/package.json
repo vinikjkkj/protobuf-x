@@ -1,0 +1,29 @@
+{
+  "name": "@protobuf-x/parser",
+  "version": "0.1.0",
+  "description": "Zero-dependency .proto file parser for protobuf-x",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.cts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "files": ["dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsx ../../scripts/build.ts parser",
+    "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "sideEffects": false,
+  "license": "MIT"
+}

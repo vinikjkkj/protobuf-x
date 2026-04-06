@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package test.recursive;
+
+// Self-referencing: tree structure
+message TreeNode {
+    string label = 1;
+    repeated TreeNode children = 2;
+    TreeNode parent = 3;
+}
+
+// Mutual recursion
+message Person {
+    string name = 1;
+    Company employer = 2;
+}
+
+message Company {
+    string name = 1;
+    repeated Person employees = 2;
+}
+
+// Linked list
+message ListNode {
+    int32 value = 1;
+    ListNode next = 2;
+}

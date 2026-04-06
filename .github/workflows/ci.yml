@@ -1,0 +1,43 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      - run: npm test
+
+  bundle-size:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Check runtime bundle size
+        run: |
+          SIZE=$(cat packages/runtime/dist/esm/*.js packages/runtime/dist/esm/**/*.js 2>/dev/null | gzip -c | wc -c)
+          echo "Runtime gzip: ${SIZE} bytes"
+          if [ "$SIZE" -gt 8192 ]; then
+            echo "::warning::Runtime bundle exceeds 8kb gzip target (${SIZE} bytes)"
+          fi

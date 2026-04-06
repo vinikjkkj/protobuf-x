@@ -1,0 +1,40 @@
+{
+  "name": "protobuf-x-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "test": "npm --ws run test",
+    "test:runtime": "npm -w @protobuf-x/runtime run test",
+    "test:parser": "npm -w @protobuf-x/parser run test",
+    "test:codegen": "npm -w @protobuf-x/codegen run test",
+    "lint": "eslint packages/ scripts/",
+    "lint:fix": "eslint packages/ scripts/ --fix",
+    "format": "prettier --write \"packages/*/src/**/*.ts\" \"packages/*/bin/**/*.ts\" \"scripts/**/*.ts\"",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"packages/*/bin/**/*.ts\" \"scripts/**/*.ts\"",
+    "typecheck": "tsc -b packages/runtime/tsconfig.json packages/parser/tsconfig.json packages/codegen/tsconfig.json",
+    "bench": "tsx scripts/benchmark.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/parser": "^8.58.0",
+    "@vinikjkkj/eslint-config": "^1.0.1",
+    "c8": "^11.0.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-import": "^2.32.0",
+    "prettier": "^3.2.0",
+    "protobufjs": "^8.0.1",
+    "protobufjs-cli": "^2.0.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

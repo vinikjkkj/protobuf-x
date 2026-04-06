@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package bench;
+
+// Small: 3 scalar fields
+message SmallMessage {
+    string name = 1;
+    int32 id = 2;
+    bool active = 3;
+}
+
+// Medium: nested + repeated
+message Address {
+    string street = 1;
+    string city = 2;
+    string zip = 3;
+}
+
+message MediumMessage {
+    string name = 1;
+    int32 age = 2;
+    Address address = 3;
+    repeated string tags = 4;
+}
+
+// Large: many fields, bytes, double, repeated
+message LargeMessage {
+    string title = 1;
+    string description = 2;
+    string content = 3;
+    int32 version = 4;
+    double score = 5;
+    bytes payload = 6;
+    repeated string metadata = 7;
+}

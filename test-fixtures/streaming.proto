@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package test.streaming;
+
+message StreamMessage {
+  int64 sequence = 1;
+  bytes payload = 2;
+  int64 timestamp = 3;
+}
+
+message BatchRequest {
+  repeated StreamMessage messages = 1;
+}
+
+message BatchResponse {
+  int32 processed = 1;
+  repeated string errors = 2;
+}
+
+service StreamService {
+  rpc Send(StreamMessage) returns (BatchResponse);
+  rpc Subscribe(BatchRequest) returns (stream StreamMessage);
+  rpc BiDi(stream StreamMessage) returns (stream StreamMessage);
+}

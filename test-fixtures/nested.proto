@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package test.nested;
+
+message Address {
+  string street = 1;
+  string city = 2;
+  string state = 3;
+  string zip = 4;
+  string country = 5;
+}
+
+message Person {
+  string name = 1;
+  int32 age = 2;
+  Address home_address = 3;
+  Address work_address = 4;
+
+  message PhoneNumber {
+    string number = 1;
+    PhoneType type = 2;
+
+    enum PhoneType {
+      MOBILE = 0;
+      HOME = 1;
+      WORK = 2;
+    }
+  }
+
+  repeated PhoneNumber phones = 5;
+}
