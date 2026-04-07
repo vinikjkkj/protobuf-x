@@ -1,29 +1,59 @@
 {
-  "name": "@protobuf-x/parser",
-  "version": "0.1.0",
-  "description": "Zero-dependency .proto file parser for protobuf-x",
-  "type": "module",
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./dist/esm/index.d.ts",
-        "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "types": "./dist/cjs/index.d.cts",
-        "default": "./dist/cjs/index.cjs"
-      }
-    }
-  },
-  "main": "./dist/cjs/index.cjs",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/esm/index.d.ts",
-  "files": ["dist/", "README.md", "LICENSE"],
-  "scripts": {
-    "build": "tsx ../../scripts/build.ts parser",
-    "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
-  },
-  "sideEffects": false,
-  "license": "MIT"
+    "name": "@protobuf-x/parser",
+    "version": "0.1.0",
+    "description": "Zero-dependency .proto file parser with full proto2/proto3/editions 2023 support. Produces a typed AST.",
+    "type": "module",
+    "keywords": [
+        "protobuf",
+        "protocol-buffers",
+        "proto",
+        "proto3",
+        "proto2",
+        "editions",
+        "parser",
+        "ast",
+        "lexer",
+        "typescript"
+    ],
+    "author": "vinikjkkj",
+    "homepage": "https://github.com/vinikjkkj/protobuf-x#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vinikjkkj/protobuf-x.git",
+        "directory": "packages/parser"
+    },
+    "bugs": {
+        "url": "https://github.com/vinikjkkj/protobuf-x/issues"
+    },
+    "funding": {
+        "type": "github",
+        "url": "https://github.com/sponsors/vinikjkkj"
+    },
+    "exports": {
+        ".": {
+            "import": {
+                "types": "./dist/esm/index.d.ts",
+                "default": "./dist/esm/index.js"
+            },
+            "require": {
+                "types": "./dist/cjs/index.d.cts",
+                "default": "./dist/cjs/index.cjs"
+            }
+        }
+    },
+    "main": "./dist/cjs/index.cjs",
+    "module": "./dist/esm/index.js",
+    "types": "./dist/esm/index.d.ts",
+    "files": [
+        "dist/",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsx ../../scripts/build.ts parser",
+        "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
+        "typecheck": "tsc --noEmit"
+    },
+    "sideEffects": false,
+    "license": "MIT"
 }

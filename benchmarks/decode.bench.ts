@@ -34,18 +34,36 @@ console.log(`Medium buf: ${mediumBuf.length} bytes`)
 console.log(`Large buf:  ${largeBuf.length} bytes`)
 
 const results = [
-    bench('decode small', () => { SmallMessage.decode(smallBuf) }, {
-        iterations: 500_000,
-        bytesPerOp: smallBuf.length
-    }),
-    bench('decode medium', () => { MediumMessage.decode(mediumBuf) }, {
-        iterations: 200_000,
-        bytesPerOp: mediumBuf.length
-    }),
-    bench('decode large', () => { LargeMessage.decode(largeBuf) }, {
-        iterations: 50_000,
-        bytesPerOp: largeBuf.length
-    })
+    bench(
+        'decode small',
+        () => {
+            SmallMessage.decode(smallBuf)
+        },
+        {
+            iterations: 500_000,
+            bytesPerOp: smallBuf.length
+        }
+    ),
+    bench(
+        'decode medium',
+        () => {
+            MediumMessage.decode(mediumBuf)
+        },
+        {
+            iterations: 200_000,
+            bytesPerOp: mediumBuf.length
+        }
+    ),
+    bench(
+        'decode large',
+        () => {
+            LargeMessage.decode(largeBuf)
+        },
+        {
+            iterations: 50_000,
+            bytesPerOp: largeBuf.length
+        }
+    )
 ]
 
 printResults(results)

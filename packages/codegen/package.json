@@ -1,35 +1,66 @@
 {
-  "name": "@protobuf-x/codegen",
-  "version": "0.1.0",
-  "description": "Code generator CLI for protobuf-x - generates TypeScript/JavaScript from .proto files",
-  "type": "module",
-  "bin": {
-    "protobuf-x": "./dist/bin/protobuf-x.js"
-  },
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./dist/esm/index.d.ts",
-        "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "types": "./dist/cjs/index.d.cts",
-        "default": "./dist/cjs/index.cjs"
-      }
-    }
-  },
-  "main": "./dist/cjs/index.cjs",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/esm/index.d.ts",
-  "files": ["dist/", "README.md", "LICENSE"],
-  "scripts": {
-    "build": "tsx ../../scripts/build.ts codegen",
-    "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@protobuf-x/parser": "0.1.0"
-  },
-  "sideEffects": false,
-  "license": "MIT"
+    "name": "@protobuf-x/codegen",
+    "version": "0.1.0",
+    "description": "Code generator CLI + programmatic API for protobuf-x. Generates fast, type-safe TypeScript/JavaScript from .proto files.",
+    "type": "module",
+    "keywords": [
+        "protobuf",
+        "protocol-buffers",
+        "proto",
+        "proto3",
+        "proto2",
+        "codegen",
+        "code-generator",
+        "cli",
+        "typescript",
+        "javascript",
+        "compiler"
+    ],
+    "author": "vinikjkkj",
+    "homepage": "https://github.com/vinikjkkj/protobuf-x#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vinikjkkj/protobuf-x.git",
+        "directory": "packages/codegen"
+    },
+    "bugs": {
+        "url": "https://github.com/vinikjkkj/protobuf-x/issues"
+    },
+    "funding": {
+        "type": "github",
+        "url": "https://github.com/sponsors/vinikjkkj"
+    },
+    "bin": {
+        "protobuf-x": "./dist/bin/protobuf-x.js"
+    },
+    "exports": {
+        ".": {
+            "import": {
+                "types": "./dist/esm/index.d.ts",
+                "default": "./dist/esm/index.js"
+            },
+            "require": {
+                "types": "./dist/cjs/index.d.cts",
+                "default": "./dist/cjs/index.cjs"
+            }
+        }
+    },
+    "main": "./dist/cjs/index.cjs",
+    "module": "./dist/esm/index.js",
+    "types": "./dist/esm/index.d.ts",
+    "files": [
+        "dist/",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsx ../../scripts/build.ts codegen",
+        "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@protobuf-x/parser": "0.1.0"
+    },
+    "sideEffects": false,
+    "license": "MIT"
 }

@@ -19,11 +19,7 @@ export interface BenchOptions {
  * Run a synchronous benchmark.
  * Warms up first, then measures `iterations` calls.
  */
-export function bench(
-    name: string,
-    fn: () => void,
-    opts: BenchOptions = {}
-): BenchResult {
+export function bench(name: string, fn: () => void, opts: BenchOptions = {}): BenchResult {
     const warmup = opts.warmup ?? 1000
     const iterations = opts.iterations ?? 100_000
 
@@ -81,7 +77,7 @@ export function printResults(results: BenchResult[]) {
     const pad = (s: string, n: number) => s.padEnd(n)
     const rpad = (s: string, n: number) => s.padStart(n)
 
-    const nameW = Math.max(20, ...results.map(r => r.name.length + 2))
+    const nameW = Math.max(20, ...results.map((r) => r.name.length + 2))
     const header = [
         pad('Benchmark', nameW),
         rpad('ops/sec', 14),
@@ -95,13 +91,15 @@ export function printResults(results: BenchResult[]) {
     console.log('-'.repeat(header.length))
 
     for (const r of results) {
-        console.log([
-            pad(r.name, nameW),
-            rpad(r.opsPerSec.toLocaleString(), 14),
-            rpad(r.avgNs.toFixed(0), 12),
-            rpad(r.totalMs.toFixed(1), 12),
-            rpad(r.throughputMBs ? r.throughputMBs.toFixed(1) : '-', 10)
-        ].join(' | '))
+        console.log(
+            [
+                pad(r.name, nameW),
+                rpad(r.opsPerSec.toLocaleString(), 14),
+                rpad(r.avgNs.toFixed(0), 12),
+                rpad(r.totalMs.toFixed(1), 12),
+                rpad(r.throughputMBs ? r.throughputMBs.toFixed(1) : '-', 10)
+            ].join(' | ')
+        )
     }
 
     console.log()

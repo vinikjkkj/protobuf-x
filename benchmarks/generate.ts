@@ -19,8 +19,19 @@ mkdirSync(genDir, { recursive: true })
 
 // protobuf-x: generate JS with file:// runtime import
 const rt = pathToFileURL(join(root, 'packages', 'runtime', 'src', 'index.ts')).href
-const code = await main(['--target', 'js', '--out', join(genDir, 'x'), '--runtime-package', rt, proto])
-if (code !== 0) { console.error('protobuf-x codegen failed'); process.exit(1) }
+const code = await main([
+    '--target',
+    'js',
+    '--out',
+    join(genDir, 'x'),
+    '--runtime-package',
+    rt,
+    proto
+])
+if (code !== 0) {
+    console.error('protobuf-x codegen failed')
+    process.exit(1)
+}
 console.log('protobuf-x: OK')
 
 // protobufjs: generate static CJS via pbjs CLI

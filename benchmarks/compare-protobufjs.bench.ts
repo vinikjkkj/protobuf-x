@@ -50,7 +50,8 @@ const PbLarge = root.lookupType('LargeMessage')
 
 const xSmall = new SmallMessage({ name: 'Alice', id: 42, active: true })
 const xMedium = new MediumMessage({
-    name: 'Bob', age: 30,
+    name: 'Bob',
+    age: 30,
     address: new Address({ street: '123 Main St', city: 'Springfield', zip: '62701' }),
     tags: ['admin', 'user', 'verified']
 })
@@ -71,7 +72,8 @@ const xLarge = new LargeMessage({
 
 const smallData = { name: 'Alice', id: 42, active: true }
 const mediumData = {
-    name: 'Bob', age: 30,
+    name: 'Bob',
+    age: 30,
     address: { street: '123 Main St', city: 'Springfield', zip: '62701' },
     tags: ['admin', 'user', 'verified']
 }
@@ -110,92 +112,251 @@ console.log(`Large  - x: ${xLargeBuf.length}B, pb: ${pbLargeBuf.length}B`)
 
 // protobufjs -> protobuf-x
 const xFromPbSmall = SmallMessage.decode(pbSmallBuf)
-if (xFromPbSmall.name !== 'Alice' || xFromPbSmall.id !== 42) { console.error('FAIL: pb->x small'); process.exit(1) }
+if (xFromPbSmall.name !== 'Alice' || xFromPbSmall.id !== 42) {
+    console.error('FAIL: pb->x small')
+    process.exit(1)
+}
 const xFromPbMedium = MediumMessage.decode(pbMediumBuf)
-if (xFromPbMedium.name !== 'Bob' || xFromPbMedium.age !== 30) { console.error('FAIL: pb->x medium'); process.exit(1) }
+if (xFromPbMedium.name !== 'Bob' || xFromPbMedium.age !== 30) {
+    console.error('FAIL: pb->x medium')
+    process.exit(1)
+}
 const xFromPbLarge = LargeMessage.decode(pbLargeBuf)
-if (xFromPbLarge.title !== 'Benchmark Test Message') { console.error('FAIL: pb->x large'); process.exit(1) }
+if (xFromPbLarge.title !== 'Benchmark Test Message') {
+    console.error('FAIL: pb->x large')
+    process.exit(1)
+}
 
 // protobuf-x -> protobufjs
 const pbFromXSmall = PbSmall.decode(xSmallBuf)
-if (pbFromXSmall.name !== 'Alice' || pbFromXSmall.id !== 42) { console.error('FAIL: x->pb small'); process.exit(1) }
+if (pbFromXSmall.name !== 'Alice' || pbFromXSmall.id !== 42) {
+    console.error('FAIL: x->pb small')
+    process.exit(1)
+}
 const pbFromXMedium = PbMedium.decode(xMediumBuf)
-if (pbFromXMedium.name !== 'Bob' || pbFromXMedium.age !== 30) { console.error('FAIL: x->pb medium'); process.exit(1) }
+if (pbFromXMedium.name !== 'Bob' || pbFromXMedium.age !== 30) {
+    console.error('FAIL: x->pb medium')
+    process.exit(1)
+}
 const pbFromXLarge = PbLarge.decode(xLargeBuf)
-if (pbFromXLarge.title !== 'Benchmark Test Message') { console.error('FAIL: x->pb large'); process.exit(1) }
+if (pbFromXLarge.title !== 'Benchmark Test Message') {
+    console.error('FAIL: x->pb large')
+    process.exit(1)
+}
 
 console.log('Cross-decode (both directions, all sizes): OK\n')
 
 // ── Benchmark runner ────────────────────────────────────────
 
-const all: Array<{ section: string, results: BenchResult[] }> = []
-function section(name: string) { all.push({ section: name, results: [] }) }
+const all: Array<{ section: string; results: BenchResult[] }> = []
+function section(name: string) {
+    all.push({ section: name, results: [] })
+}
 function run(name: string, fn: () => void, iterations = 500_000) {
     all[all.length - 1]!.results.push(bench(name, fn, { iterations }))
 }
 
 // 1. Create
 section('Create')
-run('x  create small', () => { new SmallMessage({ name: 'Alice', id: 42, active: true }) })
-run('pb create small', () => { PbSmall.create(smallData) })
-run('x  create medium', () => {
-    new MediumMessage({ name: 'Bob', age: 30,
-        address: new Address({ street: '123 Main St', city: 'Springfield', zip: '62701' }),
-        tags: ['admin', 'user', 'verified'] })
-}, 200_000)
-run('pb create medium', () => { PbMedium.create(mediumData) }, 200_000)
+run('x  create small', () => {
+    new SmallMessage({ name: 'Alice', id: 42, active: true })
+})
+run('pb create small', () => {
+    PbSmall.create(smallData)
+})
+run(
+    'x  create medium',
+    () => {
+        new MediumMessage({
+            name: 'Bob',
+            age: 30,
+            address: new Address({ street: '123 Main St', city: 'Springfield', zip: '62701' }),
+            tags: ['admin', 'user', 'verified']
+        })
+    },
+    200_000
+)
+run(
+    'pb create medium',
+    () => {
+        PbMedium.create(mediumData)
+    },
+    200_000
+)
 
 // 2. Encode (all sizes)
 section('Encode')
-run('x  encode small', () => { xSmall.toBinary() })
-run('pb encode small', () => { PbSmall.encode(pbSmall).finish() })
-run('x  encode medium', () => { xMedium.toBinary() }, 200_000)
-run('pb encode medium', () => { PbMedium.encode(pbMedium).finish() }, 200_000)
-run('x  encode large', () => { xLarge.toBinary() }, 50_000)
-run('pb encode large', () => { PbLarge.encode(pbLarge).finish() }, 50_000)
+run('x  encode small', () => {
+    xSmall.toBinary()
+})
+run('pb encode small', () => {
+    PbSmall.encode(pbSmall).finish()
+})
+run(
+    'x  encode medium',
+    () => {
+        xMedium.toBinary()
+    },
+    200_000
+)
+run(
+    'pb encode medium',
+    () => {
+        PbMedium.encode(pbMedium).finish()
+    },
+    200_000
+)
+run(
+    'x  encode large',
+    () => {
+        xLarge.toBinary()
+    },
+    50_000
+)
+run(
+    'pb encode large',
+    () => {
+        PbLarge.encode(pbLarge).finish()
+    },
+    50_000
+)
 
 // 3. Decode (all sizes)
 section('Decode')
-run('x  decode small', () => { SmallMessage.decode(xSmallBuf) })
-run('pb decode small', () => { PbSmall.decode(pbSmallBuf) })
-run('x  decode medium', () => { MediumMessage.decode(xMediumBuf) }, 200_000)
-run('pb decode medium', () => { PbMedium.decode(pbMediumBuf) }, 200_000)
-run('x  decode large', () => { LargeMessage.decode(xLargeBuf) }, 50_000)
-run('pb decode large', () => { PbLarge.decode(pbLargeBuf) }, 50_000)
+run('x  decode small', () => {
+    SmallMessage.decode(xSmallBuf)
+})
+run('pb decode small', () => {
+    PbSmall.decode(pbSmallBuf)
+})
+run(
+    'x  decode medium',
+    () => {
+        MediumMessage.decode(xMediumBuf)
+    },
+    200_000
+)
+run(
+    'pb decode medium',
+    () => {
+        PbMedium.decode(pbMediumBuf)
+    },
+    200_000
+)
+run(
+    'x  decode large',
+    () => {
+        LargeMessage.decode(xLargeBuf)
+    },
+    50_000
+)
+run(
+    'pb decode large',
+    () => {
+        PbLarge.decode(pbLargeBuf)
+    },
+    50_000
+)
 
 // 4. toJSON / toObject (both code-generated)
 section('toJSON / toObject')
-run('x  toJSON small', () => { xSmall.toJSON() })
-run('pb toObject small', () => { PbSmall.toObject(pbSmall) })
-run('x  toJSON medium', () => { xMedium.toJSON() }, 200_000)
-run('pb toObject medium', () => { PbMedium.toObject(pbMedium) }, 200_000)
+run('x  toJSON small', () => {
+    xSmall.toJSON()
+})
+run('pb toObject small', () => {
+    PbSmall.toObject(pbSmall)
+})
+run(
+    'x  toJSON medium',
+    () => {
+        xMedium.toJSON()
+    },
+    200_000
+)
+run(
+    'pb toObject medium',
+    () => {
+        PbMedium.toObject(pbMedium)
+    },
+    200_000
+)
 
 // 5. fromJSON / fromObject (both code-generated)
 section('fromJSON / fromObject')
-run('x  fromJSON small', () => { SmallMessage.fromJSON(xSmallJSON) })
-run('pb fromObject small', () => { PbSmall.fromObject(pbSmallObj) })
-run('x  fromJSON medium', () => { MediumMessage.fromJSON(xMediumJSON) }, 200_000)
-run('pb fromObject medium', () => { PbMedium.fromObject(pbMediumObj) }, 200_000)
+run('x  fromJSON small', () => {
+    SmallMessage.fromJSON(xSmallJSON)
+})
+run('pb fromObject small', () => {
+    PbSmall.fromObject(pbSmallObj)
+})
+run(
+    'x  fromJSON medium',
+    () => {
+        MediumMessage.fromJSON(xMediumJSON)
+    },
+    200_000
+)
+run(
+    'pb fromObject medium',
+    () => {
+        PbMedium.fromObject(pbMediumObj)
+    },
+    200_000
+)
 
 // 6. Verify (both code-generated)
 section('Verify')
-run('x  verify small', () => { SmallMessage.verify(xSmall) })
-run('pb verify small', () => { PbSmall.verify(pbSmall) })
-run('x  verify medium', () => { MediumMessage.verify(xMedium) }, 200_000)
-run('pb verify medium', () => { PbMedium.verify(pbMedium) }, 200_000)
+run('x  verify small', () => {
+    SmallMessage.verify(xSmall)
+})
+run('pb verify small', () => {
+    PbSmall.verify(pbSmall)
+})
+run(
+    'x  verify medium',
+    () => {
+        MediumMessage.verify(xMedium)
+    },
+    200_000
+)
+run(
+    'pb verify medium',
+    () => {
+        PbMedium.verify(pbMedium)
+    },
+    200_000
+)
 
 // 7. Clone (all sizes)
 section('Clone')
-run('x  clone small', () => { xSmall.clone() })
-run('pb clone small', () => { PbSmall.decode(PbSmall.encode(pbSmall).finish()) })
-run('x  clone medium', () => { xMedium.clone() }, 200_000)
-run('pb clone medium', () => { PbMedium.decode(PbMedium.encode(pbMedium).finish()) }, 200_000)
+run('x  clone small', () => {
+    xSmall.clone()
+})
+run('pb clone small', () => {
+    PbSmall.decode(PbSmall.encode(pbSmall).finish())
+})
+run(
+    'x  clone medium',
+    () => {
+        xMedium.clone()
+    },
+    200_000
+)
+run(
+    'pb clone medium',
+    () => {
+        PbMedium.decode(PbMedium.encode(pbMedium).finish())
+    },
+    200_000
+)
 
 // 8. Equals — both sides must encode + byte compare (no pre-encoded shortcuts)
 section('Equals')
 const xSmall2 = new SmallMessage({ name: 'Alice', id: 42, active: true })
 const pbSmall2 = PbSmall.create(smallData)
-run('x  equals small', () => { xSmall.equals(xSmall2) })
+run('x  equals small', () => {
+    xSmall.equals(xSmall2)
+})
 run('pb equals small', () => {
     // protobufjs has no equals — must encode both then compare bytes (same work as ours)
     const a = PbSmall.encode(pbSmall).finish()

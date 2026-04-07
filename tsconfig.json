@@ -3,6 +3,11 @@
     "compilerOptions": {
         "noEmit": true
     },
-    "include": ["packages/*/src/**/*.ts", "packages/*/bin/**/*.ts", "scripts/**/*.ts"],
-    "exclude": ["**/dist/**", "**/node_modules/**"]
+    "include": [
+        "packages/*/src/**/*.ts",
+        "packages/*/bin/**/*.ts",
+        "scripts/**/*.ts",
+        "benchmarks/**/*.ts"
+    ],
+    "exclude": ["**/dist/**", "**/node_modules/**", "benchmarks/generated/**"]
 }

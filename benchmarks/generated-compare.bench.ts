@@ -18,7 +18,7 @@ import type { BenchResult } from './harness.js'
 // protobuf-x generated JS (ESM)
 const xMod = await import('./generated/x/benchmarks/bench_pb.js')
 const XSmall = xMod.SmallMessage as {
-    new(init?: Record<string, unknown>): Record<string, unknown>
+    new (init?: Record<string, unknown>): Record<string, unknown>
     encode(msg: unknown, w?: unknown): { finish(): Uint8Array }
     decode(buf: Uint8Array): Record<string, unknown>
     toJSON?(msg: unknown): Record<string, unknown>
@@ -47,7 +47,8 @@ const PbLarge = pb.LargeMessage as typeof PbSmall
 
 const xSmall = new XSmall({ name: 'Alice', id: 42, active: true })
 const xMedium = new XMedium({
-    name: 'Bob', age: 30,
+    name: 'Bob',
+    age: 30,
     address: new XAddress({ street: '123 Main St', city: 'Springfield', zip: '62701' }),
     tags: ['admin', 'user', 'verified']
 })
@@ -68,7 +69,8 @@ const xLarge = new XLarge({
 
 const pbSmall = PbSmall.create({ name: 'Alice', id: 42, active: true })
 const pbMedium = PbMedium.create({
-    name: 'Bob', age: 30,
+    name: 'Bob',
+    age: 30,
     address: { street: '123 Main St', city: 'Springfield', zip: '62701' },
     tags: ['admin', 'user', 'verified']
 })
@@ -99,15 +101,23 @@ console.log(`Large  - x: ${xLargeBuf.length}B, pb: ${pbLargeBuf.length}B`)
 
 // Cross-decode
 const xFromPb = XSmall.decode(pbSmallBuf)
-if (xFromPb.name !== 'Alice') { console.error('FAIL: pb->x'); process.exit(1) }
+if (xFromPb.name !== 'Alice') {
+    console.error('FAIL: pb->x')
+    process.exit(1)
+}
 const pbFromX = PbSmall.decode(xSmallBuf)
-if (pbFromX.name !== 'Alice') { console.error('FAIL: x->pb'); process.exit(1) }
+if (pbFromX.name !== 'Alice') {
+    console.error('FAIL: x->pb')
+    process.exit(1)
+}
 console.log('Cross-decode: OK\n')
 
 // ── Benchmark ───────────────────────────────────────────────
 
-const all: Array<{ section: string, results: BenchResult[] }> = []
-function section(name: string) { all.push({ section: name, results: [] }) }
+const all: Array<{ section: string; results: BenchResult[] }> = []
+function section(name: string) {
+    all.push({ section: name, results: [] })
+}
 function run(name: string, fn: () => void, iterations = 500_000) {
     all[all.length - 1]!.results.push(bench(name, fn, { iterations }))
 }
@@ -117,46 +127,130 @@ section('Encode (generated static JS)')
 const xSmallEnc = xSmall as unknown as { toBinary(): Uint8Array }
 const xMediumEnc = xMedium as unknown as { toBinary(): Uint8Array }
 const xLargeEnc = xLarge as unknown as { toBinary(): Uint8Array }
-run('x  encode small', () => { xSmallEnc.toBinary() })
-run('pb encode small', () => { PbSmall.encode(pbSmall).finish() })
-run('x  encode medium', () => { xMediumEnc.toBinary() }, 200_000)
-run('pb encode medium', () => { PbMedium.encode(pbMedium).finish() }, 200_000)
-run('x  encode large', () => { xLargeEnc.toBinary() }, 50_000)
-run('pb encode large', () => { PbLarge.encode(pbLarge).finish() }, 50_000)
+run('x  encode small', () => {
+    xSmallEnc.toBinary()
+})
+run('pb encode small', () => {
+    PbSmall.encode(pbSmall).finish()
+})
+run(
+    'x  encode medium',
+    () => {
+        xMediumEnc.toBinary()
+    },
+    200_000
+)
+run(
+    'pb encode medium',
+    () => {
+        PbMedium.encode(pbMedium).finish()
+    },
+    200_000
+)
+run(
+    'x  encode large',
+    () => {
+        xLargeEnc.toBinary()
+    },
+    50_000
+)
+run(
+    'pb encode large',
+    () => {
+        PbLarge.encode(pbLarge).finish()
+    },
+    50_000
+)
 
 // Decode
 section('Decode (generated static JS)')
-run('x  decode small', () => { XSmall.decode(xSmallBuf) })
-run('pb decode small', () => { PbSmall.decode(pbSmallBuf) })
-run('x  decode medium', () => { XMedium.decode(xMediumBuf) }, 200_000)
-run('pb decode medium', () => { PbMedium.decode(pbMediumBuf) }, 200_000)
-run('x  decode large', () => { XLarge.decode(xLargeBuf) }, 50_000)
-run('pb decode large', () => { PbLarge.decode(pbLargeBuf) }, 50_000)
+run('x  decode small', () => {
+    XSmall.decode(xSmallBuf)
+})
+run('pb decode small', () => {
+    PbSmall.decode(pbSmallBuf)
+})
+run(
+    'x  decode medium',
+    () => {
+        XMedium.decode(xMediumBuf)
+    },
+    200_000
+)
+run(
+    'pb decode medium',
+    () => {
+        PbMedium.decode(pbMediumBuf)
+    },
+    200_000
+)
+run(
+    'x  decode large',
+    () => {
+        XLarge.decode(xLargeBuf)
+    },
+    50_000
+)
+run(
+    'pb decode large',
+    () => {
+        PbLarge.decode(pbLargeBuf)
+    },
+    50_000
+)
 
 // Create
 section('Create')
-run('x  create small', () => { new XSmall({ name: 'Alice', id: 42, active: true }) })
-run('pb create small', () => { PbSmall.create({ name: 'Alice', id: 42, active: true }) })
+run('x  create small', () => {
+    new XSmall({ name: 'Alice', id: 42, active: true })
+})
+run('pb create small', () => {
+    PbSmall.create({ name: 'Alice', id: 42, active: true })
+})
 
 // toJSON / toObject
 section('toJSON / toObject')
 if (XSmall.toJSON) {
-    run('x  toJSON small', () => { XSmall.toJSON!(xSmall) })
+    run('x  toJSON small', () => {
+        XSmall.toJSON!(xSmall)
+    })
 } else {
-    run('x  toJSON small', () => { (xSmall as { toJSON(): unknown }).toJSON() })
+    run('x  toJSON small', () => {
+        ;(xSmall as { toJSON(): unknown }).toJSON()
+    })
 }
-run('pb toObject small', () => { PbSmall.toObject(pbSmall) })
+run('pb toObject small', () => {
+    PbSmall.toObject(pbSmall)
+})
 
 // Verify
 section('Verify')
-run('pb verify small', () => { PbSmall.verify(pbSmall) })
+run('pb verify small', () => {
+    PbSmall.verify(pbSmall)
+})
 
 // Clone (encode+decode)
 section('Clone')
-run('x  clone small', () => { XSmall.decode(xSmallEnc.toBinary()) })
-run('pb clone small', () => { PbSmall.decode(PbSmall.encode(pbSmall).finish()) })
-run('x  clone medium', () => { XMedium.decode(xMediumEnc.toBinary()) }, 200_000)
-run('pb clone medium', () => { PbMedium.decode(PbMedium.encode(pbMedium).finish()) }, 200_000)
+run('x  clone small', () => {
+    XSmall.decode(xSmallEnc.toBinary())
+})
+run('pb clone small', () => {
+    PbSmall.decode(PbSmall.encode(pbSmall).finish())
+})
+run(
+    'x  clone medium',
+    () => {
+        XMedium.decode(xMediumEnc.toBinary())
+    },
+    200_000
+)
+run(
+    'pb clone medium',
+    () => {
+        PbMedium.decode(PbMedium.encode(pbMedium).finish())
+    },
+    200_000
+)
 
 // ── Print ───────────────────────────────────────────────────
 

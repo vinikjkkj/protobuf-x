@@ -1,55 +1,87 @@
 {
-  "name": "@protobuf-x/runtime",
-  "version": "0.1.0",
-  "description": "High-performance protobuf runtime with zero-copy, streaming, and zero-allocation support",
-  "type": "module",
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./dist/esm/index.d.ts",
-        "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "types": "./dist/cjs/index.d.cts",
-        "default": "./dist/cjs/index.cjs"
-      }
+    "name": "@protobuf-x/runtime",
+    "version": "0.1.0",
+    "description": "High-performance Protocol Buffers runtime for TypeScript & JavaScript. Zero dependencies, native bigint, faster and smaller than protobufjs.",
+    "type": "module",
+    "keywords": [
+        "protobuf",
+        "protocol-buffers",
+        "proto",
+        "proto3",
+        "proto2",
+        "serialization",
+        "encoding",
+        "binary",
+        "rpc",
+        "grpc",
+        "typescript",
+        "performance"
+    ],
+    "author": "vinikjkkj",
+    "homepage": "https://github.com/vinikjkkj/protobuf-x#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vinikjkkj/protobuf-x.git",
+        "directory": "packages/runtime"
     },
-    "./minimal": {
-      "import": {
-        "types": "./dist/esm/minimal.d.ts",
-        "default": "./dist/esm/minimal.js"
-      },
-      "require": {
-        "types": "./dist/cjs/minimal.d.cts",
-        "default": "./dist/cjs/minimal.cjs"
-      }
+    "bugs": {
+        "url": "https://github.com/vinikjkkj/protobuf-x/issues"
     },
-    "./binary": {
-      "import": "./dist/esm/binary/index.js",
-      "require": "./dist/cjs/binary/index.cjs"
+    "funding": {
+        "type": "github",
+        "url": "https://github.com/sponsors/vinikjkkj"
     },
-    "./streaming": {
-      "import": "./dist/esm/streaming/index.js",
-      "require": "./dist/cjs/streaming/index.cjs"
+    "exports": {
+        ".": {
+            "import": {
+                "types": "./dist/esm/index.d.ts",
+                "default": "./dist/esm/index.js"
+            },
+            "require": {
+                "types": "./dist/cjs/index.d.cts",
+                "default": "./dist/cjs/index.cjs"
+            }
+        },
+        "./minimal": {
+            "import": {
+                "types": "./dist/esm/minimal.d.ts",
+                "default": "./dist/esm/minimal.js"
+            },
+            "require": {
+                "types": "./dist/cjs/minimal.d.cts",
+                "default": "./dist/cjs/minimal.cjs"
+            }
+        },
+        "./binary": {
+            "import": "./dist/esm/binary/index.js",
+            "require": "./dist/cjs/binary/index.cjs"
+        },
+        "./streaming": {
+            "import": "./dist/esm/streaming/index.js",
+            "require": "./dist/cjs/streaming/index.cjs"
+        },
+        "./util": {
+            "import": "./dist/esm/util/index.js",
+            "require": "./dist/cjs/util/index.cjs"
+        },
+        "./pool": {
+            "import": "./dist/esm/pool/index.js",
+            "require": "./dist/cjs/pool/index.cjs"
+        }
     },
-    "./util": {
-      "import": "./dist/esm/util/index.js",
-      "require": "./dist/cjs/util/index.cjs"
+    "main": "./dist/cjs/index.cjs",
+    "module": "./dist/esm/index.js",
+    "types": "./dist/esm/index.d.ts",
+    "files": [
+        "dist/",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsx ../../scripts/build.ts runtime",
+        "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
+        "typecheck": "tsc --noEmit"
     },
-    "./pool": {
-      "import": "./dist/esm/pool/index.js",
-      "require": "./dist/cjs/pool/index.cjs"
-    }
-  },
-  "main": "./dist/cjs/index.cjs",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/esm/index.d.ts",
-  "files": ["dist/", "README.md", "LICENSE"],
-  "scripts": {
-    "build": "tsx ../../scripts/build.ts runtime",
-    "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
-  },
-  "sideEffects": false,
-  "license": "MIT"
+    "sideEffects": false,
+    "license": "MIT"
 }

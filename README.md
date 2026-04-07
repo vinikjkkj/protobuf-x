@@ -14,13 +14,13 @@
 
 Existing TypeScript protobuf libraries trade off performance, bundle size, or type ergonomics. `protobuf-x` aims for all three at once.
 
-| | protobuf-x | protobufjs |
-|---|---|---|
-| **Encode small** | **9.0M ops/s** | 5.3M (58%) |
-| **Decode small** | **10.6M ops/s** | 8.8M (83%) |
-| **toJSON small** | **150M ops/s** | 41M (27%) |
-| **Bundle (minimal, brotli)** | **3.4 KB** | 6.2 KB |
-| **Wins (10 benchmarks)** | **9-10** | 0-1 |
+|                              | protobuf-x      | protobufjs |
+| ---------------------------- | --------------- | ---------- |
+| **Encode small**             | **9.0M ops/s**  | 5.3M (58%) |
+| **Decode small**             | **10.6M ops/s** | 8.8M (83%) |
+| **toJSON small**             | **150M ops/s**  | 41M (27%)  |
+| **Bundle (minimal, brotli)** | **3.4 KB**      | 6.2 KB     |
+| **Wins (10 benchmarks)**     | **9-10**        | 0-1        |
 
 See [Benchmarks](#benchmarks) below for the full breakdown.
 
@@ -79,17 +79,15 @@ import { User, Message } from './gen/schema_pb.js'
 
 // Type-safe construction with nested types via dot notation
 const alice = new User({
-  id: 'u1',
-  name: 'Alice',
-  role: User.Role.ADMIN,        // ← enum dot access
+    id: 'u1',
+    name: 'Alice',
+    role: User.Role.ADMIN // ← enum dot access
 })
 
 const msg = new Message({
-  from: alice,
-  text: 'hey @bob',
-  mentions: [
-    new User({ id: 'u2', name: 'Bob', role: User.Role.USER }),
-  ],
+    from: alice,
+    text: 'hey @bob',
+    mentions: [new User({ id: 'u2', name: 'Bob', role: User.Role.USER })]
 })
 
 // Encode to binary (Uint8Array)
@@ -97,9 +95,9 @@ const bytes = msg.toBinary()
 
 // Decode from binary
 const decoded = Message.decode(bytes)
-console.log(decoded.from?.name)               // 'Alice'
-console.log(decoded.mentions[0].role)         // 1 (User.Role.USER)
-console.log(decoded.from instanceof User)     // true
+console.log(decoded.from?.name) // 'Alice'
+console.log(decoded.mentions[0].role) // 1 (User.Role.USER)
+console.log(decoded.from instanceof User) // true
 
 // JSON (proto3 canonical mapping)
 const json = Message.toJSON(decoded)
@@ -114,18 +112,18 @@ Run on `bench.proto` with 4 messages (Small/Address/Medium/Large) on Node.js 25.
 
 ### Performance — operations/sec (higher is better)
 
-| Operation | **protobuf-x** | protobufjs | Ratio |
-|---|---:|---:|---:|
-| Encode small | **9,031,955** | 5,266,595 | 1.71x |
-| Encode medium | **1,746,438** | 1,222,655 | 1.43x |
-| Encode large | **161,786** | 147,620 | 1.10x |
-| Decode small | **10,616,252** | 8,800,059 | 1.21x |
-| Decode medium | **1,681,801** | 1,620,816 | 1.04x |
-| Decode large | **347,685** | 333,880 | 1.04x |
-| Create small | **26,843,043** | 12,453,238 | 2.16x |
-| toJSON small | **150,150,150** | 40,811,662 | 3.68x |
-| Clone small | **4,278,620** | 2,643,950 | 1.62x |
-| Clone medium | **832,948** | ~500,000 | ~1.65x |
+| Operation     |  **protobuf-x** | protobufjs |  Ratio |
+| ------------- | --------------: | ---------: | -----: |
+| Encode small  |   **9,031,955** |  5,266,595 |  1.71x |
+| Encode medium |   **1,746,438** |  1,222,655 |  1.43x |
+| Encode large  |     **161,786** |    147,620 |  1.10x |
+| Decode small  |  **10,616,252** |  8,800,059 |  1.21x |
+| Decode medium |   **1,681,801** |  1,620,816 |  1.04x |
+| Decode large  |     **347,685** |    333,880 |  1.04x |
+| Create small  |  **26,843,043** | 12,453,238 |  2.16x |
+| toJSON small  | **150,150,150** | 40,811,662 |  3.68x |
+| Clone small   |   **4,278,620** |  2,643,950 |  1.62x |
+| Clone medium  |     **832,948** |   ~500,000 | ~1.65x |
 
 **Score: protobuf-x 9-10 / protobufjs 0-1** (varies ±1 with measurement noise on the closest contests).
 
@@ -133,21 +131,21 @@ Reproduce: `node --import tsx benchmarks/generated-compare.bench.ts`
 
 ### Bundle size — runtime library (brotli-compressed, minified)
 
-| Library | Brotli |
-|---|---:|
+| Library                |      Brotli |
+| ---------------------- | ----------: |
 | **protobuf-x minimal** | **3,438 B** |
-| protobufjs minimal | 6,249 B |
-| **protobuf-x full** | **7,415 B** |
-| protobufjs full | 21,557 B |
+| protobufjs minimal     |     6,249 B |
+| **protobuf-x full**    | **7,415 B** |
+| protobufjs full        |    21,557 B |
 
 ### Total shipped (runtime + generated for 4 messages, brotli)
 
-| Library | Total |
-|---|---:|
+| Library                |       Total |
+| ---------------------- | ----------: |
 | **protobuf-x minimal** | **6,015 B** |
-| protobufjs minimal | 8,408 B |
-| **protobuf-x full** | **9,992 B** |
-| protobufjs full | 23,716 B |
+| protobufjs minimal     |     8,408 B |
+| **protobuf-x full**    | **9,992 B** |
+| protobufjs full        |    23,716 B |
 
 ---
 
@@ -222,23 +220,23 @@ When the codegen sees `--runtime-package @protobuf-x/runtime/minimal`, it auto-e
 protobuf-x [options] <file.proto ...>
 ```
 
-| Option | Description |
-|---|---|
-| `-o, --out <dir>` | Output directory (required) |
-| `-t, --target <type>` | `ts` (default), `js`, or `both` |
-| `--import-path <path>` | Add a directory to the proto import search path (repeatable) |
-| `--runtime-package <name>` | Override runtime package (default `@protobuf-x/runtime`) |
-| `--no-json` | Skip `toJSON`/`fromJSON` + JSON interfaces |
-| `-h, --help` | Show help |
-| `-v, --version` | Show version |
+| Option                     | Description                                                  |
+| -------------------------- | ------------------------------------------------------------ |
+| `-o, --out <dir>`          | Output directory (required)                                  |
+| `-t, --target <type>`      | `ts` (default), `js`, or `both`                              |
+| `--import-path <path>`     | Add a directory to the proto import search path (repeatable) |
+| `--runtime-package <name>` | Override runtime package (default `@protobuf-x/runtime`)     |
+| `--no-json`                | Skip `toJSON`/`fromJSON` + JSON interfaces                   |
+| `-h, --help`               | Show help                                                    |
+| `-v, --version`            | Show version                                                 |
 
 ### Target reference
 
-| Target | Files generated |
-|---|---|
-| `ts` (default) | `schema_pb.ts` — TypeScript source (classes + types + methods) |
-| `js` | `schema_pb.js` + `schema_pb.d.ts` — runnable JS + separate type declarations |
-| `both` | All three: `.ts`, `.js`, `.d.ts` |
+| Target         | Files generated                                                              |
+| -------------- | ---------------------------------------------------------------------------- |
+| `ts` (default) | `schema_pb.ts` — TypeScript source (classes + types + methods)               |
+| `js`           | `schema_pb.js` + `schema_pb.d.ts` — runnable JS + separate type declarations |
+| `both`         | All three: `.ts`, `.js`, `.d.ts`                                             |
 
 Use `ts` if your project compiles TypeScript (Vite, tsx, esbuild, swc, ts-node).
 Use `js` to ship as a regular npm library.
@@ -273,30 +271,32 @@ import { generate, generateToDisk } from '@protobuf-x/codegen'
 
 // Generate in-memory (returns { files, errors })
 const result = await generate({
-  files: ['./schema.proto'],
-  target: 'ts',
-  runtimePackage: '@protobuf-x/runtime',
-  noJson: false,
+    files: ['./schema.proto'],
+    target: 'ts',
+    runtimePackage: '@protobuf-x/runtime',
+    noJson: false
 })
 
 for (const file of result.files) {
-  console.log(file.path, file.content.length)
+    console.log(file.path, file.content.length)
 }
 
 // Or write directly to disk
 await generateToDisk({
-  files: ['./schema.proto'],
-  target: 'both',
-  outDir: './gen',
+    files: ['./schema.proto'],
+    target: 'both',
+    outDir: './gen'
 })
 
 // Generate from in-memory source string (no disk needed)
 const inMem = await generate({
-  sources: [{
-    name: 'user.proto',
-    content: 'syntax = "proto3"; message User { string name = 1; }',
-  }],
-  target: 'ts',
+    sources: [
+        {
+            name: 'user.proto',
+            content: 'syntax = "proto3"; message User { string name = 1; }'
+        }
+    ],
+    target: 'ts'
 })
 console.log(inMem.files[0].content)
 ```
@@ -307,14 +307,14 @@ console.log(inMem.files[0].content)
 import { generate } from '@protobuf-x/codegen'
 
 export function protobufXPlugin() {
-  return {
-    name: 'protobuf-x',
-    async load(id: string) {
-      if (!id.endsWith('.proto')) return null
-      const result = await generate({ files: [id], target: 'ts' })
-      return result.files[0]?.content ?? null
-    },
-  }
+    return {
+        name: 'protobuf-x',
+        async load(id: string) {
+            if (!id.endsWith('.proto')) return null
+            const result = await generate({ files: [id], target: 'ts' })
+            return result.files[0]?.content ?? null
+        }
+    }
 }
 ```
 
@@ -340,15 +340,15 @@ message User {
 import { User } from './gen/user_pb.js'
 
 // Both work — pick whichever you prefer
-const profile1: User.Profile = new User.Profile({ bio: 'hi' })   // dot notation
-const profile2: User_Profile = new User_Profile({ bio: 'hi' })   // flat name
+const profile1: User.Profile = new User.Profile({ bio: 'hi' }) // dot notation
+const profile2: User_Profile = new User_Profile({ bio: 'hi' }) // flat name
 
 // Deep nesting works arbitrarily
 const avatar = new User.Avatar({ url: 'https://...' })
 profile1.avatar = avatar
 
-console.log(profile1 instanceof User.Profile)  // true
-console.log(User.Profile === User_Profile)     // true (same class)
+console.log(profile1 instanceof User.Profile) // true
+console.log(User.Profile === User_Profile) // true (same class)
 ```
 
 ### Enums
@@ -370,7 +370,7 @@ import { Order } from './gen/order_pb.js'
 const order = new Order({ status: Order.Status.PENDING })
 order.status = Order.Status.SHIPPED
 
-const s: Order.Status = Order.Status.DELIVERED  // typed
+const s: Order.Status = Order.Status.DELIVERED // typed
 ```
 
 ### Oneof
@@ -391,7 +391,7 @@ const ok = new Result({ outcome: { case: 'success', value: 'done!' } })
 const err = new Result({ outcome: { case: 'error', value: 'oops' } })
 
 if (ok.outcome?.case === 'success') {
-  console.log(ok.outcome.value)  // narrowed to string
+    console.log(ok.outcome.value) // narrowed to string
 }
 ```
 
@@ -407,10 +407,10 @@ message Headers {
 import { Headers } from './gen/headers_pb.js'
 
 const h = new Headers({
-  entries: new Map([
-    ['content-type', 'application/json'],
-    ['x-request-id', 'abc123'],
-  ]),
+    entries: new Map([
+        ['content-type', 'application/json'],
+        ['x-request-id', 'abc123']
+    ])
 })
 ```
 
@@ -421,14 +421,14 @@ import { encodeDelimited, decodeStream } from '@protobuf-x/runtime'
 
 // Encode many messages with length-delimited framing
 async function* messages() {
-  yield encodeDelimited(User, alice)
-  yield encodeDelimited(User, bob)
-  yield encodeDelimited(User, carol)
+    yield encodeDelimited(User, alice)
+    yield encodeDelimited(User, bob)
+    yield encodeDelimited(User, carol)
 }
 
 // Decode from a stream
 for await (const user of decodeStream(User, source)) {
-  console.log(user.name)
+    console.log(user.name)
 }
 ```
 
@@ -466,11 +466,11 @@ The generated `toBinary()` inlines all three phases into a single function per m
 
 ## Packages
 
-| Package | Description |
-|---|---|
+| Package                                     | Description                                                                  |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
 | [`@protobuf-x/runtime`](./packages/runtime) | The runtime library: `BinaryReader`, `BinaryWriter`, `Message` base, helpers |
-| [`@protobuf-x/parser`](./packages/parser) | Pure-JS `.proto` parser (used at codegen time, not shipped to runtime) |
-| [`@protobuf-x/codegen`](./packages/codegen) | CLI + programmatic API for generating TS/JS from `.proto` files |
+| [`@protobuf-x/parser`](./packages/parser)   | Pure-JS `.proto` parser (used at codegen time, not shipped to runtime)       |
+| [`@protobuf-x/codegen`](./packages/codegen) | CLI + programmatic API for generating TS/JS from `.proto` files              |
 
 ---
 

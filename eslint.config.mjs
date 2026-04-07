@@ -9,8 +9,20 @@ export default [
     {
         rules: {
             'no-restricted-globals': ['error', 'DataView'],
-            'no-bitwise': 'off'
+            'no-bitwise': 'off',
+            // Allow double quotes for strings that contain single quotes,
+            // matching Prettier's `singleQuote: true` + escape-avoidance behavior.
+            quotes: ['warn', 'single', { avoidEscape: true, allowTemplateLiterals: true }]
         }
     },
-    { ignores: ['**/dist/', '**/*.cjs'] }
+    {
+        ignores: [
+            '**/dist/',
+            '**/*.cjs',
+            '**/node_modules/',
+            'coverage/',
+            'benchmarks/generated/',
+            '.tmp/'
+        ]
+    }
 ]

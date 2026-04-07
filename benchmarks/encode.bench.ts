@@ -40,18 +40,36 @@ console.log(`Medium msg: ${mediumSize} bytes`)
 console.log(`Large msg:  ${largeSize} bytes`)
 
 const results = [
-    bench('encode small', () => { small.toBinary() }, {
-        iterations: 500_000,
-        bytesPerOp: smallSize
-    }),
-    bench('encode medium', () => { medium.toBinary() }, {
-        iterations: 200_000,
-        bytesPerOp: mediumSize
-    }),
-    bench('encode large', () => { large.toBinary() }, {
-        iterations: 50_000,
-        bytesPerOp: largeSize
-    })
+    bench(
+        'encode small',
+        () => {
+            small.toBinary()
+        },
+        {
+            iterations: 500_000,
+            bytesPerOp: smallSize
+        }
+    ),
+    bench(
+        'encode medium',
+        () => {
+            medium.toBinary()
+        },
+        {
+            iterations: 200_000,
+            bytesPerOp: mediumSize
+        }
+    ),
+    bench(
+        'encode large',
+        () => {
+            large.toBinary()
+        },
+        {
+            iterations: 50_000,
+            bytesPerOp: largeSize
+        }
+    )
 ]
 
 printResults(results)
