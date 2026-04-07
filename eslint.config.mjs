@@ -22,6 +22,10 @@ export default [
             '**/node_modules/',
             'coverage/',
             'benchmarks/generated/',
+            // Imports from `benchmarks/generated/` (gitignored), so the file
+            // can't be type-checked or type-linted in CI. Mirrored in
+            // tsconfig.json's exclude list.
+            'benchmarks/generated-compare.bench.ts',
             '.tmp/'
         ]
     }
