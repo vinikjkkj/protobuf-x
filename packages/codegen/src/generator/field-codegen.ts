@@ -138,11 +138,13 @@ function formatTagHex(bytes: number[]): string {
 }
 
 /** Get the TypeScript type for a proto field. */
-export function getTypeScriptType(field: ProtoField): string {
+export type Int64Mode = 'bigint' | 'number' | 'string'
+
+export function getTypeScriptType(field: ProtoField, int64As: Int64Mode = 'bigint'): string {
     if (field.mapKeyType && field.mapValueType) {
-        const keyTs = scalarToTsType(field.mapKeyType)
+        const keyTs = scalarToTsType(field.mapKeyType, int64As)
         const valTs = isScalarType(field.mapValueType)
-            ? scalarToTsType(field.mapValueType)
+            ? scalarToTsType(field.mapValueType, int64As)
             : mapValueTypeExpr(field)
         return `Map<${keyTs}, ${valTs}>`
     }
@@ -153,7 +155,7 @@ export function getTypeScriptType(field: ProtoField): string {
     } else if (field.isEnum) {
         baseType = fieldTypeExpr(field)
     } else {
-        baseType = scalarToTsType(field.type)
+        baseType = scalarToTsType(field.type, int64As)
     }
 
     if (field.label === 'repeated') {
@@ -168,8 +170,10 @@ export function isScalarType(type: string): boolean {
     return SCALAR_TYPES.has(type)
 }
 
-/** Map proto scalar type to TypeScript type. */
-export function scalarToTsType(protoType: string): string {
+/** Map proto scalar type to TypeScript type. The 64-bit integer types are
+ * controlled by `int64As` (bigint by default, number or string for protobufjs
+ * interop). */
+export function scalarToTsType(protoType: string, int64As: Int64Mode = 'bigint'): string {
     switch (protoType) {
         case 'double':
         case 'float':
@@ -184,7 +188,7 @@ export function scalarToTsType(protoType: string): string {
         case 'sint64':
         case 'fixed64':
         case 'sfixed64':
-            return 'bigint'
+            return int64As
         case 'bool':
             return 'boolean'
         case 'string':
@@ -197,7 +201,7 @@ export function scalarToTsType(protoType: string): string {
 }
 
 /** Get the default value expression for a proto field. */
-export function getDefaultValue(field: ProtoField): string {
+export function getDefaultValue(field: ProtoField, int64As: Int64Mode = 'bigint'): string {
     if (field.defaultValueExpr !== undefined) {
         return field.defaultValueExpr
     }
@@ -213,11 +217,11 @@ export function getDefaultValue(field: ProtoField): string {
     if (field.isEnum) {
         return '0'
     }
-    return scalarDefaultValue(field.type)
+    return scalarDefaultValue(field.type, int64As)
 }
 
 /** Get scalar default value as code string. */
-function scalarDefaultValue(protoType: string): string {
+function scalarDefaultValue(protoType: string, int64As: Int64Mode = 'bigint'): string {
     switch (protoType) {
         case 'double':
         case 'float':
@@ -232,7 +236,7 @@ function scalarDefaultValue(protoType: string): string {
         case 'sint64':
         case 'fixed64':
         case 'sfixed64':
-            return '0n'
+            return int64As === 'bigint' ? '0n' : int64As === 'number' ? '0' : "'0'"
         case 'bool':
             return 'false'
         case 'string':
@@ -352,8 +356,28 @@ function fieldTypeExpr(field: ProtoField): string {
     return field.typeExpr ?? field.type
 }
 
-function mapValueTypeExpr(field: ProtoField): string {
+export function mapValueTypeExpr(field: ProtoField): string {
     return field.mapValueTypeExpr ?? field.mapValueType ?? 'unknown'
+}
+
+/**
+ * Wrap a value expression with `BigInt(...)` if the codegen is emitting
+ * non-bigint 64-bit fields. The 64-bit encode helpers always operate on
+ * BigInt internally; in number/string mode the field value is a JS number
+ * or decimal string and must be coerced before bit manipulation.
+ */
+function asBigIntExpr(valueExpr: string, int64As: Int64Mode): string {
+    return int64As === 'bigint' ? valueExpr : `BigInt(${valueExpr})`
+}
+
+/**
+ * Wrap a `r.int64BigInt()`-style read expression to convert from BigInt to
+ * the target representation (number or string), or pass through for bigint mode.
+ */
+function fromBigIntExpr(readExpr: string, int64As: Int64Mode): string {
+    if (int64As === 'bigint') return readExpr
+    if (int64As === 'number') return `Number(${readExpr})`
+    return `String(${readExpr})`
 }
 
 export function getReaderBigIntMethod(protoType: string): string {
@@ -527,7 +551,11 @@ function encodeDefaultCheck(field: ProtoField): string {
 /**
  * Generate the encode line(s) for a field.
  */
-export function generateEncodeField(field: ProtoField, msgType?: string): string[] {
+export function generateEncodeField(
+    field: ProtoField,
+    msgType?: string,
+    int64As: Int64Mode = 'bigint'
+): string[] {
     const name = safeName(field.name)
     const fdName = descriptorConstName(field, msgType)
     const accessor = `msg.${name}`
@@ -546,8 +574,9 @@ export function generateEncodeField(field: ProtoField, msgType?: string): string
         const keyMethod = getWriterMethod(field.mapKeyType)
         lines.push(`  w.raw(new Uint8Array([${keyHex}]));`)
         if (is64BitLoHi(field.mapKeyType)) {
+            const k = asBigIntExpr('k', int64As)
             lines.push(
-                `  w.${keyMethod}(Number(k & 0xFFFFFFFFn), Number((k >> 32n) & 0xFFFFFFFFn));`
+                `  w.${keyMethod}(Number(${k} & 0xFFFFFFFFn), Number((${k} >> 32n) & 0xFFFFFFFFn));`
             )
         } else {
             lines.push(`  w.${keyMethod}(k);`)
@@ -560,8 +589,9 @@ export function generateEncodeField(field: ProtoField, msgType?: string): string
             const valMethod = getWriterMethod(field.mapValueType)
             lines.push(`  w.raw(new Uint8Array([${valHex}]));`)
             if (is64BitLoHi(field.mapValueType)) {
+                const vv = asBigIntExpr('v', int64As)
                 lines.push(
-                    `  w.${valMethod}(Number(v & 0xFFFFFFFFn), Number((v >> 32n) & 0xFFFFFFFFn));`
+                    `  w.${valMethod}(Number(${vv} & 0xFFFFFFFFn), Number((${vv} >> 32n) & 0xFFFFFFFFn));`
                 )
             } else {
                 lines.push(`  w.${valMethod}(v);`)
@@ -594,8 +624,9 @@ export function generateEncodeField(field: ProtoField, msgType?: string): string
             lines.push(`  w.raw(${fdName}.tag);`)
             lines.push('  w.fork();')
             if (is64BitLoHi(field.type)) {
+                const vv = asBigIntExpr('v', int64As)
                 lines.push(
-                    `  for (const v of ${accessor}) { w.${getWriterMethod(field.type)}(Number(v & 0xFFFFFFFFn), Number((v >> 32n) & 0xFFFFFFFFn)); }`
+                    `  for (const v of ${accessor}) { w.${getWriterMethod(field.type)}(Number(${vv} & 0xFFFFFFFFn), Number((${vv} >> 32n) & 0xFFFFFFFFn)); }`
                 )
             } else {
                 lines.push(
@@ -622,8 +653,9 @@ export function generateEncodeField(field: ProtoField, msgType?: string): string
             // Repeated non-packed scalar or enum
             const method = field.isEnum ? 'uint32' : getWriterMethod(field.type)
             if (is64BitLoHi(field.type)) {
+                const vv = asBigIntExpr('v', int64As)
                 lines.push(
-                    `for (const v of ${accessor}) { w.raw(${fdName}.tag); w.${method}(Number(v & 0xFFFFFFFFn), Number((v >> 32n) & 0xFFFFFFFFn)); }`
+                    `for (const v of ${accessor}) { w.raw(${fdName}.tag); w.${method}(Number(${vv} & 0xFFFFFFFFn), Number((${vv} >> 32n) & 0xFFFFFFFFn)); }`
                 )
             } else {
                 lines.push(`for (const v of ${accessor}) { w.raw(${fdName}.tag); w.${method}(v); }`)
@@ -674,9 +706,10 @@ export function generateEncodeField(field: ProtoField, msgType?: string): string
     const method = getWriterMethod(field.type)
     if (field.isRequired) {
         if (is64BitLoHi(field.type)) {
+            const a = asBigIntExpr(accessor, int64As)
             return [
                 `if (${accessor} === undefined) { throw new Error('Missing required field: ${field.name}'); }`,
-                `w.raw(${fdName}.tag); w.${method}(Number(${accessor} & 0xFFFFFFFFn), Number((${accessor} >> 32n) & 0xFFFFFFFFn));`
+                `w.raw(${fdName}.tag); w.${method}(Number(${a} & 0xFFFFFFFFn), Number((${a} >> 32n) & 0xFFFFFFFFn));`
             ]
         }
         return [
@@ -685,8 +718,9 @@ export function generateEncodeField(field: ProtoField, msgType?: string): string
         ]
     }
     if (is64BitLoHi(field.type)) {
+        const a = asBigIntExpr(accessor, int64As)
         return [
-            `if (${check}) { w.raw(${fdName}.tag); w.${method}(Number(${accessor} & 0xFFFFFFFFn), Number((${accessor} >> 32n) & 0xFFFFFFFFn)); }`
+            `if (${check}) { w.raw(${fdName}.tag); w.${method}(Number(${a} & 0xFFFFFFFFn), Number((${a} >> 32n) & 0xFFFFFFFFn)); }`
         ]
     }
     return [`if (${check}) { w.raw(${fdName}.tag); w.${method}(${accessor}); }`]
@@ -696,7 +730,11 @@ export function generateEncodeField(field: ProtoField, msgType?: string): string
  * Get the size expression for a scalar value in the two-pass encode.
  * Returns a code expression string that evaluates to the byte size.
  */
-function scalarSizeExpr(protoType: string, valueExpr: string): string {
+function scalarSizeExpr(
+    protoType: string,
+    valueExpr: string,
+    int64As: Int64Mode = 'bigint'
+): string {
     switch (protoType) {
         case 'double':
         case 'fixed64':
@@ -715,11 +753,15 @@ function scalarSizeExpr(protoType: string, valueExpr: string): string {
         case 'sint32':
             return `varint32Size(((${valueExpr} << 1) ^ (${valueExpr} >> 31)) >>> 0)`
         case 'int64':
-        case 'uint64':
-            return `varint64Size(Number(${valueExpr} & 0xFFFFFFFFn), Number((${valueExpr} >> 32n) & 0xFFFFFFFFn))`
-        case 'sint64':
+        case 'uint64': {
+            const v = asBigIntExpr(valueExpr, int64As)
+            return `varint64Size(Number(${v} & 0xFFFFFFFFn), Number((${v} >> 32n) & 0xFFFFFFFFn))`
+        }
+        case 'sint64': {
             // zigzag for 64-bit: ((v << 1n) ^ (v >> 63n)) but we use lo/hi decomposition
-            return `varint64Size(Number(((${valueExpr} << 1n) ^ (${valueExpr} >> 63n)) & 0xFFFFFFFFn), Number((((${valueExpr} << 1n) ^ (${valueExpr} >> 63n)) >> 32n) & 0xFFFFFFFFn))`
+            const v = asBigIntExpr(valueExpr, int64As)
+            return `varint64Size(Number(((${v} << 1n) ^ (${v} >> 63n)) & 0xFFFFFFFFn), Number((((${v} << 1n) ^ (${v} >> 63n)) >> 32n) & 0xFFFFFFFFn))`
+        }
         default:
             // enum
             return `varint32Size(${valueExpr})`
@@ -730,7 +772,11 @@ function scalarSizeExpr(protoType: string, valueExpr: string): string {
  * Generate the write expression(s) for a scalar type in the two-pass encode.
  * Returns code lines that write the value into buf at position p, updating p.
  */
-function scalarWriteLines(protoType: string, valueExpr: string): string[] {
+function scalarWriteLines(
+    protoType: string,
+    valueExpr: string,
+    int64As: Int64Mode = 'bigint'
+): string[] {
     switch (protoType) {
         case 'double':
             return [`p = writeDouble(${valueExpr}, buf, p);`]
@@ -748,20 +794,25 @@ function scalarWriteLines(protoType: string, valueExpr: string): string[] {
         case 'bool':
             return [`p = writeBool(${valueExpr}, buf, p);`]
         case 'int64':
-        case 'uint64':
+        case 'uint64': {
+            const v = asBigIntExpr(valueExpr, int64As)
             return [
-                `p = writeVarint64(Number(${valueExpr} & 0xFFFFFFFFn), Number((${valueExpr} >> 32n) & 0xFFFFFFFFn), buf, p);`
+                `p = writeVarint64(Number(${v} & 0xFFFFFFFFn), Number((${v} >> 32n) & 0xFFFFFFFFn), buf, p);`
             ]
+        }
         case 'sint64': {
+            const v = asBigIntExpr(valueExpr, int64As)
             return [
-                `{ const _zz = (${valueExpr} << 1n) ^ (${valueExpr} >> 63n); p = writeVarint64(Number(_zz & 0xFFFFFFFFn), Number((_zz >> 32n) & 0xFFFFFFFFn), buf, p); }`
+                `{ const _zz = (${v} << 1n) ^ (${v} >> 63n); p = writeVarint64(Number(_zz & 0xFFFFFFFFn), Number((_zz >> 32n) & 0xFFFFFFFFn), buf, p); }`
             ]
         }
         case 'fixed64':
-        case 'sfixed64':
+        case 'sfixed64': {
+            const v = asBigIntExpr(valueExpr, int64As)
             return [
-                `p = writeFixed64(Number(${valueExpr} & 0xFFFFFFFFn), Number((${valueExpr} >> 32n) & 0xFFFFFFFFn), buf, p);`
+                `p = writeFixed64(Number(${v} & 0xFFFFFFFFn), Number((${v} >> 32n) & 0xFFFFFFFFn), buf, p);`
             ]
+        }
         default:
             // enum
             return [`p = writeVarint(${valueExpr}, buf, p);`]
@@ -782,7 +833,11 @@ function generateTagWrite(tagBytes: number[]): string {
  * For string/bytes/message fields, caches computed sizes in local variables
  * (e.g., _bl_fieldName for byte lengths, _ms_fieldName for message sizes).
  */
-export function generateSizeOfField(field: ProtoField, _scope?: string): string[] {
+export function generateSizeOfField(
+    field: ProtoField,
+    _scope?: string,
+    int64As: Int64Mode = 'bigint'
+): string[] {
     const name = safeName(field.name)
     const accessor = `msg.${name}`
     const typeRef = fieldTypeExpr(field)
@@ -803,7 +858,9 @@ export function generateSizeOfField(field: ProtoField, _scope?: string): string[
             lines.push('  const _bl_mk = strByteLen(k);')
             lines.push(`  _es += ${keyTagBytes.length} + varint32Size(_bl_mk) + _bl_mk;`)
         } else {
-            lines.push(`  _es += ${keyTagBytes.length} + ${scalarSizeExpr(field.mapKeyType, 'k')};`)
+            lines.push(
+                `  _es += ${keyTagBytes.length} + ${scalarSizeExpr(field.mapKeyType, 'k', int64As)};`
+            )
         }
         // value: field 2
         if (isScalarType(field.mapValueType)) {
@@ -816,7 +873,7 @@ export function generateSizeOfField(field: ProtoField, _scope?: string): string[
                 lines.push(`  _es += ${valTagBytes.length} + varint32Size(v.length) + v.length;`)
             } else {
                 lines.push(
-                    `  _es += ${valTagBytes.length} + ${scalarSizeExpr(field.mapValueType, 'v')};`
+                    `  _es += ${valTagBytes.length} + ${scalarSizeExpr(field.mapValueType, 'v', int64As)};`
                 )
             }
         } else if (field.mapValueIsEnum) {
@@ -840,7 +897,7 @@ export function generateSizeOfField(field: ProtoField, _scope?: string): string[
             lines.push(`if (${accessor}.length > 0) {`)
             lines.push('  let _ps = 0;')
             lines.push(
-                `  for (const v of ${accessor}) { _ps += ${scalarSizeExpr(field.type, 'v')}; }`
+                `  for (const v of ${accessor}) { _ps += ${scalarSizeExpr(field.type, 'v', int64As)}; }`
             )
             lines.push(`  s += ${tagSize} + varint32Size(_ps) + _ps;`)
             lines.push('}')
@@ -868,7 +925,7 @@ export function generateSizeOfField(field: ProtoField, _scope?: string): string[
             lines.push('}')
         } else {
             lines.push(
-                `for (const v of ${accessor}) { s += ${tagSize} + ${scalarSizeExpr(field.type, 'v')}; }`
+                `for (const v of ${accessor}) { s += ${tagSize} + ${scalarSizeExpr(field.type, 'v', int64As)}; }`
             )
         }
         return lines
@@ -930,9 +987,9 @@ export function generateSizeOfField(field: ProtoField, _scope?: string): string[
         lines.push(
             `if (${accessor} === undefined) { throw new Error('Missing required field: ${field.name}'); }`
         )
-        lines.push(`s += ${tagSize} + ${scalarSizeExpr(field.type, accessor)};`)
+        lines.push(`s += ${tagSize} + ${scalarSizeExpr(field.type, accessor, int64As)};`)
     } else {
-        const sizeExpr = scalarSizeExpr(field.type, accessor)
+        const sizeExpr = scalarSizeExpr(field.type, accessor, int64As)
         lines.push(`if (${check}) { s += ${tagSize} + ${sizeExpr}; }`)
     }
     return lines
@@ -942,7 +999,11 @@ export function generateSizeOfField(field: ProtoField, _scope?: string): string[
  * Generate the encodeTo lines for a field in the two-pass encode.
  * Writes directly into buf at position p, returning new p.
  */
-export function generateEncodeToField(field: ProtoField, _scope?: string): string[] {
+export function generateEncodeToField(
+    field: ProtoField,
+    _scope?: string,
+    int64As: Int64Mode = 'bigint'
+): string[] {
     const name = safeName(field.name)
     const accessor = `msg.${name}`
     const typeRef = fieldTypeExpr(field)
@@ -965,7 +1026,9 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
             lines.push('  const _bl_mk = strByteLen(k);')
             lines.push(`  _es += ${keyTagBytes.length} + varint32Size(_bl_mk) + _bl_mk;`)
         } else {
-            lines.push(`  _es += ${keyTagBytes.length} + ${scalarSizeExpr(field.mapKeyType, 'k')};`)
+            lines.push(
+                `  _es += ${keyTagBytes.length} + ${scalarSizeExpr(field.mapKeyType, 'k', int64As)};`
+            )
         }
         const valWire = isScalarType(field.mapValueType)
             ? scalarWireType(field.mapValueType)
@@ -982,7 +1045,7 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
                 lines.push(`  _es += ${valTagBytes.length} + varint32Size(v.length) + v.length;`)
             } else {
                 lines.push(
-                    `  _es += ${valTagBytes.length} + ${scalarSizeExpr(field.mapValueType, 'v')};`
+                    `  _es += ${valTagBytes.length} + ${scalarSizeExpr(field.mapValueType, 'v', int64As)};`
                 )
             }
         } else if (field.mapValueIsEnum) {
@@ -999,7 +1062,7 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
                 '  p = writeVarint(_bl_mk, buf, p); strWrite(k, buf, p, _bl_mk); p += _bl_mk;'
             )
         } else {
-            for (const wl of scalarWriteLines(field.mapKeyType, 'k')) {
+            for (const wl of scalarWriteLines(field.mapKeyType, 'k', int64As)) {
                 lines.push(`  ${wl}`)
             }
         }
@@ -1013,7 +1076,7 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
             } else if (field.mapValueType === 'bytes') {
                 lines.push('  p = writeVarint(v.length, buf, p); p = writeBytes(v, buf, p);')
             } else {
-                for (const wl of scalarWriteLines(field.mapValueType, 'v')) {
+                for (const wl of scalarWriteLines(field.mapValueType, 'v', int64As)) {
                     lines.push(`  ${wl}`)
                 }
             }
@@ -1039,7 +1102,7 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
                 lines.push(`  for (const v of ${accessor}) { _ps += varint32Size(v); }`)
             } else {
                 lines.push(
-                    `  for (const v of ${accessor}) { _ps += ${scalarSizeExpr(field.type, 'v')}; }`
+                    `  for (const v of ${accessor}) { _ps += ${scalarSizeExpr(field.type, 'v', int64As)}; }`
                 )
             }
             lines.push('  p = writeVarint(_ps, buf, p);')
@@ -1047,7 +1110,7 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
                 lines.push(`  for (const v of ${accessor}) { p = writeVarint(v, buf, p); }`)
             } else {
                 lines.push(
-                    `  for (const v of ${accessor}) { ${scalarWriteLines(field.type, 'v').join(' ')} }`
+                    `  for (const v of ${accessor}) { ${scalarWriteLines(field.type, 'v', int64As).join(' ')} }`
                 )
             }
             lines.push('}')
@@ -1072,7 +1135,7 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
             lines.push('}')
         } else {
             lines.push(
-                `for (const v of ${accessor}) { ${tagWrite} ${scalarWriteLines(field.type, 'v').join(' ')} }`
+                `for (const v of ${accessor}) { ${tagWrite} ${scalarWriteLines(field.type, 'v', int64As).join(' ')} }`
             )
         }
         return lines
@@ -1135,10 +1198,10 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
         lines.push(
             `if (${accessor} === undefined) { throw new Error('Missing required field: ${field.name}'); }`
         )
-        lines.push(`${tagWrite} ${scalarWriteLines(field.type, accessor).join(' ')}`)
+        lines.push(`${tagWrite} ${scalarWriteLines(field.type, accessor, int64As).join(' ')}`)
     } else {
         lines.push(
-            `if (${check}) { ${tagWrite} ${scalarWriteLines(field.type, accessor).join(' ')} }`
+            `if (${check}) { ${tagWrite} ${scalarWriteLines(field.type, accessor, int64As).join(' ')} }`
         )
     }
     return lines
@@ -1148,7 +1211,7 @@ export function generateEncodeToField(field: ProtoField, _scope?: string): strin
  * Generate the decode switch case line for a field.
  * Returns lines like: `case 1: msg.name = r.string(); break;`
  */
-export function generateDecodeField(field: ProtoField): string[] {
+export function generateDecodeField(field: ProtoField, int64As: Int64Mode = 'bigint'): string[] {
     const name = safeName(field.name)
     const accessor = `msg.${name}`
     const typeRef = fieldTypeExpr(field)
@@ -1158,10 +1221,10 @@ export function generateDecodeField(field: ProtoField): string[] {
         const lines: string[] = []
         lines.push(`case ${field.number}: {`)
         lines.push('  const _mLen = r.uint32(); const _mEnd = r.pos + _mLen;')
-        const keyDefault = scalarDefaultValue(field.mapKeyType)
+        const keyDefault = scalarDefaultValue(field.mapKeyType, int64As)
         const valDefault =
             isScalarType(field.mapValueType) || field.mapValueIsEnum
-                ? scalarDefaultValue(field.mapValueType)
+                ? scalarDefaultValue(field.mapValueType, int64As)
                 : `new ${mapValueTypeExpr(field)}()`
         lines.push(`  let mk = ${keyDefault};`)
         lines.push(`  let mv = ${valDefault};`)
@@ -1169,15 +1232,15 @@ export function generateDecodeField(field: ProtoField): string[] {
         lines.push('    const mt = r.uint32();')
         lines.push('    switch (mt >>> 3) {')
         if (is64BitLoHi(field.mapKeyType)) {
-            lines.push(`      case 1: mk = r.${getReaderBigIntMethod(field.mapKeyType)}(); break;`)
+            const readExpr = `r.${getReaderBigIntMethod(field.mapKeyType)}()`
+            lines.push(`      case 1: mk = ${fromBigIntExpr(readExpr, int64As)}; break;`)
         } else {
             lines.push(`      case 1: mk = r.${getReaderMethod(field.mapKeyType)}(); break;`)
         }
         if (isScalarType(field.mapValueType)) {
             if (is64BitLoHi(field.mapValueType)) {
-                lines.push(
-                    `      case 2: mv = r.${getReaderBigIntMethod(field.mapValueType)}(); break;`
-                )
+                const readExpr = `r.${getReaderBigIntMethod(field.mapValueType)}()`
+                lines.push(`      case 2: mv = ${fromBigIntExpr(readExpr, int64As)}; break;`)
             } else {
                 lines.push(`      case 2: mv = r.${getReaderMethod(field.mapValueType)}(); break;`)
             }
@@ -1207,8 +1270,9 @@ export function generateDecodeField(field: ProtoField): string[] {
             lines.push('    const pLen = r.uint32();')
             lines.push('    const pEnd = r.pos + pLen;')
             if (is64BitLoHi(field.type)) {
+                const readExpr = `r.${getReaderBigIntMethod(field.type)}()`
                 lines.push(
-                    `    while (r.pos < pEnd) { ${accessor}.push(r.${getReaderBigIntMethod(field.type)}()); }`
+                    `    while (r.pos < pEnd) { ${accessor}.push(${fromBigIntExpr(readExpr, int64As)}); }`
                 )
             } else {
                 lines.push(
@@ -1217,7 +1281,8 @@ export function generateDecodeField(field: ProtoField): string[] {
             }
             lines.push('  } else {')
             if (is64BitLoHi(field.type)) {
-                lines.push(`    ${accessor}.push(r.${getReaderBigIntMethod(field.type)}());`)
+                const readExpr = `r.${getReaderBigIntMethod(field.type)}()`
+                lines.push(`    ${accessor}.push(${fromBigIntExpr(readExpr, int64As)});`)
             } else {
                 lines.push(`    ${accessor}.push(r.${getReaderMethod(field.type)}());`)
             }
@@ -1241,8 +1306,9 @@ export function generateDecodeField(field: ProtoField): string[] {
         }
         // Repeated scalar non-packed
         if (is64BitLoHi(field.type)) {
+            const readExpr = `r.${getReaderBigIntMethod(field.type)}()`
             return [
-                `case ${field.number}: ${accessor}.push(r.${getReaderBigIntMethod(field.type)}()); break;`
+                `case ${field.number}: ${accessor}.push(${fromBigIntExpr(readExpr, int64As)}); break;`
             ]
         }
         return [
@@ -1270,9 +1336,8 @@ export function generateDecodeField(field: ProtoField): string[] {
 
     // Singular scalar
     if (is64BitLoHi(field.type)) {
-        return [
-            `case ${field.number}: ${accessor} = r.${getReaderBigIntMethod(field.type)}(); break;`
-        ]
+        const readExpr = `r.${getReaderBigIntMethod(field.type)}()`
+        return [`case ${field.number}: ${accessor} = ${fromBigIntExpr(readExpr, int64As)}; break;`]
     }
     return [`case ${field.number}: ${accessor} = r.${getReaderMethod(field.type)}(); break;`]
 }

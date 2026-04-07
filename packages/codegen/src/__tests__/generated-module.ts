@@ -4,7 +4,7 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { generateTypeScript } from '../generator/ts-generator.js'
-import type { ProtoFile } from '../generator/ts-generator.js'
+import type { ProtoFile, TsGeneratorOptions } from '../generator/ts-generator.js'
 
 const runtimeEntry = fileURLToPath(new URL('../../../runtime/src/index.ts', import.meta.url))
 
@@ -24,10 +24,14 @@ export async function importGeneratedModule(filePath: string): Promise<Record<st
 
 export async function generateAndImportModule(
     proto: ProtoFile,
-    fileName = 'generated_pb.ts'
+    fileName = 'generated_pb.ts',
+    options?: Omit<TsGeneratorOptions, 'runtimePackage'>
 ): Promise<{ filePath: string; module: Record<string, unknown>; source: string }> {
     const dir = mkdtempSync(join(tmpdir(), 'protobuf-x-generated-'))
-    const source = generateTypeScript(proto, { runtimePackage: runtimePackageSpecifier(dir) })
+    const source = generateTypeScript(proto, {
+        runtimePackage: runtimePackageSpecifier(dir),
+        ...options
+    })
     const filePath = join(dir, fileName)
     writeFileSync(filePath, source, 'utf-8')
     return {

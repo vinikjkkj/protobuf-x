@@ -19,17 +19,20 @@ npm install @protobuf-x/runtime
 
 ```bash
 npx protobuf-x [options] <file.proto ...>
+# or use the short alias:
+npx pbx [options] <file.proto ...>
 ```
 
-| Option                     | Description                                                  |
-| -------------------------- | ------------------------------------------------------------ |
-| `-o, --out <dir>`          | Output directory (required)                                  |
-| `-t, --target <type>`      | `ts` (default), `js`, or `both`                              |
-| `--import-path <path>`     | Add a directory to the proto import search path (repeatable) |
-| `--runtime-package <name>` | Override runtime package (default `@protobuf-x/runtime`)     |
-| `--no-json`                | Skip `toJSON`/`fromJSON` + JSON interfaces                   |
-| `-h, --help`               | Show help                                                    |
-| `-v, --version`            | Show version                                                 |
+| Option                     | Description                                                       |
+| -------------------------- | ----------------------------------------------------------------- |
+| `-o, --out <dir>`          | Output directory (required)                                       |
+| `-t, --target <type>`      | `ts` (default), `js`, or `both`                                   |
+| `--import-path <path>`     | Add a directory to the proto import search path (repeatable)      |
+| `--runtime-package <name>` | Override runtime package (default `@protobuf-x/runtime`)          |
+| `--no-json`                | Skip `toJSON`/`fromJSON` + JSON interfaces                        |
+| `--int64-as <repr>`        | 64-bit int representation: `bigint` (default), `number`, `string` |
+| `-h, --help`               | Show help                                                         |
+| `-v, --version`            | Show version                                                      |
 
 ### Target reference
 
@@ -56,6 +59,9 @@ protobuf-x --runtime-package @protobuf-x/runtime/minimal --out gen schema.proto
 
 # Compile a tree of files with import paths
 protobuf-x --import-path ./schemas --import-path ./vendor --out gen schemas/main.proto
+
+# Use plain `number` for int64 fields (protobufjs-style, loses precision above 2^53)
+protobuf-x --int64-as number --out gen schema.proto
 ```
 
 ## Programmatic API
@@ -106,6 +112,7 @@ interface GenerateOptions {
     target?: 'ts' | 'js' | 'both' // default 'ts'
     runtimePackage?: string // default '@protobuf-x/runtime'
     noJson?: boolean // default false; auto-true for /minimal runtime
+    int64As?: 'bigint' | 'number' | 'string' // default 'bigint'
     importPaths?: string[] // additional proto import search paths
     outDir?: string // joined with relative output paths
     parser?: ParserModuleLike // override the parser module
@@ -195,12 +202,78 @@ const bytes = user.toBinary() // Uint8Array
 const decoded = User.decode(bytes) // typed
 ```
 
-### Native bigint for 64-bit fields
+### 64-bit integer representation (`--int64-as`)
+
+By default, `int64`/`uint64`/`sint64`/`fixed64`/`sfixed64` fields use native
+JavaScript `bigint` — full precision, no `Long` wrapper, fastest path on the
+wire.
 
 ```ts
 // proto: int64 timestamp = 1;
-const evt = new Event({ timestamp: 1735689600000n }) // bigint, no Long wrapper
+const evt = new Event({ timestamp: 1735689600000n }) // bigint
 ```
+
+Three modes are supported:
+
+| Flag                | Class field type | Tradeoff                                                            |
+| ------------------- | ---------------- | ------------------------------------------------------------------- |
+| `--int64-as bigint` | `bigint`         | **Default.** Full precision, fastest, no conversion overhead        |
+| `--int64-as number` | `number`         | Drop-in for `protobufjs` numeric users; loses precision above 2^53  |
+| `--int64-as string` | `string`         | Safe for JSON interop, no precision loss, slowest (BigInt wrapping) |
+
+Both `number` and `string` modes wrap with `BigInt(...)` internally on
+encode and unwrap with `Number(...)` / `String(...)` on decode, so the
+storage type matches what your code expects without any `Long` shim.
+
+```bash
+protobuf-x --int64-as number --out gen schema.proto
+```
+
+```ts
+// With --int64-as number:
+const evt = new Event({ timestamp: 1735689600000 }) // plain number
+```
+
+### POJO input interface (`IFoo`)
+
+For every generated class `Foo`, a POJO-shaped interface `IFoo` is also
+emitted (zero runtime cost — interfaces are erased at compile time). This
+mirrors the `protobufjs` static-module shape, where every field is optional
+and nullable, and nested message references use the `I`-prefixed peer.
+
+```ts
+// Generated:
+export interface IUser {
+    id?: string | null
+    name?: string | null
+    profile?: IUser_Profile | null // ← I-prefixed nested type
+}
+export class User extends Message<User> implements IUser {
+    /* ... */
+}
+
+// Use IUser anywhere you want POJO input typing without forcing a class
+// instance — useful for API request bodies, form state, etc.
+function saveUser(input: IUser) {
+    return User.encode(new User(input)).finish()
+}
+```
+
+The class `Foo` always satisfies `IFoo`, so plain objects matching the
+interface can be passed straight to the constructor.
+
+### proto3 implicit-presence warning
+
+Generated `.ts` files include a header listing every proto3 scalar field
+that uses **implicit presence** (i.e. `int32 count = 1;` rather than
+`optional int32 count = 1;`). These decode to their zero value (`0`, `""`,
+`false`, empty bytes) when missing on the wire — **not** `undefined`.
+
+This is a common footgun when migrating from `protobufjs`, where code like
+`if (msg.count) { ... }` silently misbehaves when `count` is legitimately
+zero. To distinguish "absent" from "default", mark the field `optional`
+in your `.proto` file. The warning is capped to 30 entries with an
+overflow line for larger schemas.
 
 ## Performance of generated code
 

@@ -76,6 +76,13 @@ export interface GenerateOptions {
     runtimePackage?: string
     /** Skip generating toJSON/fromJSON + JSON interfaces. */
     noJson?: boolean
+    /**
+     * JS representation for 64-bit integer fields. Defaults to `'bigint'`.
+     *  - `'bigint'`: native BigInt — full precision, fastest
+     *  - `'number'`: JS number — protobufjs-like, loses precision above 2^53
+     *  - `'string'`: decimal string — safe for JSON interop
+     */
+    int64As?: 'bigint' | 'number' | 'string'
     /** Additional directories to search when resolving proto imports. */
     importPaths?: string[]
     /**
@@ -134,6 +141,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     const target: GenerateTarget = options.target ?? 'ts'
     const runtimePackage = options.runtimePackage ?? '@protobuf-x/runtime'
     const noJson = options.noJson === true || /\/minimal(\.[jt]s)?$/.test(runtimePackage)
+    const int64As = options.int64As ?? 'bigint'
     const outDir = options.outDir ?? ''
     const parserModule = options.parser ?? (await loadParserModule())
 
@@ -185,7 +193,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
                     const tsRelPath = getOutputPath(loaded.virtualPath)
                     const tsAbsPath = outDir ? path.join(outDir, tsRelPath) : tsRelPath
                     if (!seenPaths.has(tsAbsPath)) {
-                        const opts = { runtimePackage, noJson }
+                        const opts = { runtimePackage, noJson, int64As }
                         let tsSource = generateTypeScript(loaded.proto, opts)
                         const candidates = analyzeInlineCandidates(loaded.proto)
                         tsSource = applyInlineOptimizations(tsSource, candidates)
@@ -198,7 +206,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
                     const jsAbsPath = outDir ? path.join(outDir, paths.js) : paths.js
                     const dtsAbsPath = outDir ? path.join(outDir, paths.dts) : paths.dts
                     if (!seenPaths.has(jsAbsPath)) {
-                        const opts = { runtimePackage, noJson }
+                        const opts = { runtimePackage, noJson, int64As }
                         const { js, dts } = generateJavaScript(loaded.proto, opts)
                         files.push({ path: jsAbsPath, content: js })
                         files.push({ path: dtsAbsPath, content: dts })

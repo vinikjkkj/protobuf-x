@@ -17,7 +17,10 @@ import {
     generateEncodeField,
     generateDecodeField,
     generateSizeOfField,
-    generateEncodeToField
+    generateEncodeToField,
+    isScalarType,
+    mapValueTypeExpr,
+    scalarToTsType
 } from './field-codegen.js'
 import type { ProtoOneof } from './oneof-codegen.js'
 import {
@@ -65,9 +68,13 @@ function formatRangeArray(ranges?: readonly ProtoRange[]): string {
  * @param packageName - The proto package name (for fully qualified names).
  * @returns The complete TypeScript class code string.
  */
+export type Int64Mode = 'bigint' | 'number' | 'string'
+
 export interface MessageCodegenOptions {
     /** Skip generating toJSON/fromJSON methods + JSON interfaces + JSON namespace aliases. */
     noJson?: boolean
+    /** JS representation for 64-bit integer fields. Defaults to 'bigint'. */
+    int64As?: Int64Mode
 }
 
 export function generateMessage(
@@ -77,6 +84,7 @@ export function generateMessage(
     options: MessageCodegenOptions = {}
 ): string {
     const noJson = options.noJson === true
+    const int64As: Int64Mode = options.int64As ?? 'bigint'
     const t = new CodeTemplate()
     const generatedName = message.generatedName ?? message.name
     const typePath = [...enclosingNames, generatedName]
@@ -134,7 +142,7 @@ export function generateMessage(
     for (const oneof of message.oneofs) {
         t.raw(generateOneofCaseEnum(oneof, generatedName))
         t.blank()
-        t.raw(generateOneofType(oneof, generatedName))
+        t.raw(generateOneofType(oneof, generatedName, int64As))
         t.blank()
     }
 
@@ -143,6 +151,26 @@ export function generateMessage(
         t.raw(generateMessage(nested, packageName, typePath, options))
         t.blank()
     }
+
+    // Generate POJO input interface (`IFoo`) — protobufjs-compatible shape.
+    // Erased at compile time, zero bundle cost. All fields are optional and
+    // nullable so plain objects (not class instances) can satisfy the type.
+    // Nested message fields reference the I-prefixed peer (e.g. `IUser_Profile`).
+    const interfaceName = `I${generatedName}`
+    t.block(`export interface ${interfaceName} {`, () => {
+        for (const field of regularFields) {
+            t.line(`${field.name}?: ${getInterfaceFieldType(field, int64As)} | null;`)
+        }
+        for (const oneof of message.oneofs) {
+            // Oneofs keep the discriminated union shape — protobufjs flattens
+            // them, but reproducing that here would create two parallel
+            // representations and ambiguous semantics. Migrators need to
+            // rewrite oneof read sites; this is documented in the README.
+            const oneofTypeName = `${generatedName}_${oneof.name.charAt(0).toUpperCase() + oneof.name.slice(1)}`
+            t.line(`${oneof.name}?: ${oneofTypeName} | null;`)
+        }
+    })
+    t.blank()
 
     // Generate JSON interface (erased at compile time — zero bundle cost)
     const jsonName = `${generatedName}JSON`
@@ -158,7 +186,8 @@ export function generateMessage(
                 t.line(`${jsonKey}${optional ? '?' : ''}: ${jsonType};`)
             }
             for (const oneof of message.oneofs) {
-                t.line(`${oneof.name}?: { case: string; value: unknown };`)
+                const oneofTypeName = `${generatedName}_${oneof.name.charAt(0).toUpperCase() + oneof.name.slice(1)}`
+                t.line(`${oneof.name}?: ${oneofTypeName};`)
             }
         })
         t.blank()
@@ -179,14 +208,15 @@ export function generateMessage(
         t.blank()
     }
 
-    // Generate class
+    // Generate class. The `implements I${generatedName}` clause guarantees
+    // structural consistency between the class shape and the POJO input interface.
     t.block(
-        `export class ${generatedName} extends ${RUNTIME_MESSAGE_BASE}<${generatedName}> {`,
+        `export class ${generatedName} extends ${RUNTIME_MESSAGE_BASE}<${generatedName}> implements ${interfaceName} {`,
         () => {
             // Field declarations with defaults
             for (const field of regularFields) {
-                const tsType = getTypeScriptType(field)
-                const defaultVal = getDefaultValue(field)
+                const tsType = getTypeScriptType(field, int64As)
+                const defaultVal = getDefaultValue(field, int64As)
                 if (
                     (field.hasPresence || field.isRequired) &&
                     field.label !== 'repeated' &&
@@ -273,7 +303,7 @@ export function generateMessage(
                     // When writer provided (nested message encode), write directly into it.
                     // Regular fields
                     for (const field of regularFields) {
-                        const lines = generateEncodeField(field, fieldScope)
+                        const lines = generateEncodeField(field, fieldScope, int64As)
                         for (const line of lines) {
                             t.line(line)
                         }
@@ -281,7 +311,7 @@ export function generateMessage(
 
                     // Oneof fields
                     for (const oneof of message.oneofs) {
-                        const lines = generateOneofEncodeLines(oneof, fieldScope)
+                        const lines = generateOneofEncodeLines(oneof, fieldScope, int64As)
                         for (const line of lines) {
                             t.line(line)
                         }
@@ -299,7 +329,7 @@ export function generateMessage(
 
                 // Regular fields
                 for (const field of regularFields) {
-                    const lines = generateSizeOfField(field, fieldScope)
+                    const lines = generateSizeOfField(field, fieldScope, int64As)
                     for (const line of lines) {
                         t.line(line)
                     }
@@ -307,7 +337,7 @@ export function generateMessage(
 
                 // Oneof fields
                 for (const oneof of message.oneofs) {
-                    const lines = generateOneofSizeOfLines(oneof, fieldScope)
+                    const lines = generateOneofSizeOfLines(oneof, fieldScope, int64As)
                     for (const line of lines) {
                         t.line(line)
                     }
@@ -324,7 +354,7 @@ export function generateMessage(
                 () => {
                     // Regular fields
                     for (const field of regularFields) {
-                        const lines = generateEncodeToField(field, fieldScope)
+                        const lines = generateEncodeToField(field, fieldScope, int64As)
                         for (const line of lines) {
                             t.line(line)
                         }
@@ -332,7 +362,7 @@ export function generateMessage(
 
                     // Oneof fields
                     for (const oneof of message.oneofs) {
-                        const lines = generateOneofEncodeToLines(oneof, fieldScope)
+                        const lines = generateOneofEncodeToLines(oneof, fieldScope, int64As)
                         for (const line of lines) {
                             t.line(line)
                         }
@@ -376,7 +406,11 @@ export function generateMessage(
                                 t.block(`case '${field.name}': {`, () => {
                                     t.line(`const _v = (this as any).${field.name};`)
                                     t.line('let s = 0;')
-                                    const sizeLines = generateSizeOfField(field, fieldScope)
+                                    const sizeLines = generateSizeOfField(
+                                        field,
+                                        fieldScope,
+                                        int64As
+                                    )
                                     for (const line of sizeLines) {
                                         t.line(
                                             line.replace(
@@ -390,7 +424,11 @@ export function generateMessage(
                                     })
                                     t.line('const buf = allocBuf(s);')
                                     t.line('let p = 0;')
-                                    const encodeToLines = generateEncodeToField(field, fieldScope)
+                                    const encodeToLines = generateEncodeToField(
+                                        field,
+                                        fieldScope,
+                                        int64As
+                                    )
                                     for (const line of encodeToLines) {
                                         t.line(
                                             line.replace(
@@ -463,7 +501,7 @@ export function generateMessage(
 
                     if (field.mapKeyType || field.label === 'repeated' || field.isGroup) {
                         // Complex fields: delegate to sizeOf
-                        const lines = generateSizeOfField(field, fieldScope)
+                        const lines = generateSizeOfField(field, fieldScope, int64As)
                         for (const line of lines) t.line(line.replace(/msg\./g, 'this.'))
                         continue
                     }
@@ -512,7 +550,7 @@ export function generateMessage(
                         field.type === 'sint64'
                     ) {
                         // 64-bit varint types: delegate to sizeOf (handles bigint→lo/hi)
-                        const lines = generateSizeOfField(field, fieldScope)
+                        const lines = generateSizeOfField(field, fieldScope, int64As)
                         for (const line of lines) t.line(line.replace(/msg\./g, 'this.'))
                     } else if (field.type === 'sint32') {
                         // sint32: must zigzag encode before sizing
@@ -525,7 +563,7 @@ export function generateMessage(
                     }
                 }
                 for (const oneof of message.oneofs) {
-                    const lines = generateOneofSizeOfLines(oneof, fieldScope)
+                    const lines = generateOneofSizeOfLines(oneof, fieldScope, int64As)
                     for (const line of lines) t.line(line.replace(/msg\./g, 'this.'))
                 }
 
@@ -551,7 +589,7 @@ export function generateMessage(
                     }
 
                     if (field.mapKeyType || field.label === 'repeated' || field.isGroup) {
-                        const lines = generateEncodeToField(field, fieldScope)
+                        const lines = generateEncodeToField(field, fieldScope, int64As)
                         for (const line of lines) t.line(line.replace(/msg\./g, 'this.'))
                         continue
                     }
@@ -574,12 +612,12 @@ export function generateMessage(
                             `if (${accessor} !== undefined) { ${tagBytes} p = writeVarint(_ms_${field.name}, buf, p); p = ${typeRef}.encodeTo(${accessor}, buf, p); }`
                         )
                     } else {
-                        const lines = generateEncodeToField(field, fieldScope)
+                        const lines = generateEncodeToField(field, fieldScope, int64As)
                         for (const line of lines) t.line(line.replace(/msg\./g, 'this.'))
                     }
                 }
                 for (const oneof of message.oneofs) {
-                    const lines = generateOneofEncodeToLines(oneof, fieldScope)
+                    const lines = generateOneofEncodeToLines(oneof, fieldScope, int64As)
                     for (const line of lines) t.line(line.replace(/msg\./g, 'this.'))
                 }
                 t.line('return finalizeBuf(buf, s);')
@@ -636,7 +674,7 @@ export function generateMessage(
                     t.block('switch (tag >>> 3) {', () => {
                         // Regular fields
                         for (const field of regularFields) {
-                            const lines = generateDecodeField(field)
+                            const lines = generateDecodeField(field, int64As)
                             for (const line of lines) {
                                 if (field.isRequired && line.startsWith(`case ${field.number}:`)) {
                                     t.line(
@@ -653,7 +691,7 @@ export function generateMessage(
 
                         // Oneof fields
                         for (const oneof of message.oneofs) {
-                            const lines = generateOneofDecodeLines(oneof, message.name)
+                            const lines = generateOneofDecodeLines(oneof, message.name, int64As)
                             for (const line of lines) {
                                 t.line(line)
                             }
@@ -781,6 +819,8 @@ function generateNestedNamespaceMerge(
             const nestedGen = nested.generatedName ?? nestedName
             t.line(`export const ${nestedName} = ${nestedGen};`)
             t.line(`export type ${nestedName} = ${nestedGen};`)
+            // POJO interface alias: `Parent.IChild` resolves to `IParent_Child`
+            t.line(`export type I${nestedName} = I${nestedGen};`)
             if (!noJson) {
                 t.line(`export type ${nestedName}JSON = ${nestedGen}JSON;`)
             }
@@ -829,6 +869,49 @@ function getTagBytesArray(field: ProtoField): string {
 
 function fieldTypeExprForField(field: ProtoField): string {
     return field.typeExpr ?? field.type
+}
+
+/**
+ * Prefix the last segment of a type expression with `I` so it references the
+ * POJO interface peer instead of the class.
+ *   `User`              -> `IUser`
+ *   `User_Profile`      -> `IUser_Profile`
+ *   `imp1.User`         -> `imp1.IUser`
+ *   `imp1.User_Profile` -> `imp1.IUser_Profile`
+ */
+function prefixIToTypeExpr(typeExpr: string): string {
+    const lastDot = typeExpr.lastIndexOf('.')
+    if (lastDot === -1) return `I${typeExpr}`
+    return `${typeExpr.slice(0, lastDot + 1)}I${typeExpr.slice(lastDot + 1)}`
+}
+
+/**
+ * Get the TypeScript type for a field as it appears in the POJO `I*` interface.
+ * Differences from {@link getTypeScriptType}:
+ *  - Message fields reference the I-prefixed peer (e.g. `IUser_Profile`)
+ *  - Map values that are messages also use the I-prefixed peer
+ *  - Repeated fields keep their `T[]` shape (just optional + nullable on the field)
+ */
+function getInterfaceFieldType(field: ProtoField, int64As: Int64Mode): string {
+    if (field.mapKeyType && field.mapValueType) {
+        const keyTs = scalarToTsType(field.mapKeyType, int64As)
+        const valTs = isScalarType(field.mapValueType)
+            ? scalarToTsType(field.mapValueType, int64As)
+            : prefixIToTypeExpr(mapValueTypeExpr(field))
+        return `Map<${keyTs}, ${valTs}>`
+    }
+
+    let baseType: string
+    if (field.isMessage) {
+        baseType = prefixIToTypeExpr(fieldTypeExprForField(field))
+    } else if (field.isEnum) {
+        baseType = fieldTypeExprForField(field)
+    } else {
+        baseType = scalarToTsType(field.type, int64As)
+    }
+
+    if (field.label === 'repeated') return `${baseType}[]`
+    return baseType
 }
 
 /** Get the TypeScript type for a field in the JSON interface. */

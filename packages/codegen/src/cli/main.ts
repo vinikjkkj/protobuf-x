@@ -82,7 +82,8 @@ export async function main(argv: string[]): Promise<number> {
                             args.out,
                             outFile
                         ),
-                        noJson: args.noJson
+                        noJson: args.noJson,
+                        int64As: args.int64As
                     }
                     let tsSource = generateTypeScript(loaded.proto, generatorOptions)
                     const candidates = analyzeInlineCandidates(loaded.proto)
@@ -105,7 +106,8 @@ export async function main(argv: string[]): Promise<number> {
                             args.out,
                             jsOutFile
                         ),
-                        noJson: args.noJson
+                        noJson: args.noJson,
+                        int64As: args.int64As
                     }
                     const { js, dts } = generateJavaScript(loaded.proto, generatorOptions)
                     const dtsOutFile = path.join(args.out, paths.dts)

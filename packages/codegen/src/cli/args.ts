@@ -17,6 +17,13 @@ export interface ParsedArgs {
      * targets /minimal.
      */
     noJson: boolean
+    /**
+     * JS representation for 64-bit integer fields (int64/uint64/sint64/fixed64/sfixed64).
+     *  - 'bigint' (default): native BigInt — full precision, fastest
+     *  - 'number':           JS number — easy interop, loses precision above 2^53
+     *  - 'string':           decimal string — interop with JSON, full precision
+     */
+    int64As: 'bigint' | 'number' | 'string'
     /** Positional .proto file paths. */
     files: string[]
     /** Whether --help was passed. */
@@ -34,6 +41,7 @@ export class ArgError extends Error {
 
 const HELP_TEXT = `
 Usage: protobuf-x [options] <file.proto ...>
+       pbx        [options] <file.proto ...>   (alias)
 
 Options:
   -o, --out <dir>              Output directory (required)
@@ -43,12 +51,14 @@ Options:
                                (default: "@protobuf-x/runtime")
       --no-json                Skip generating toJSON/fromJSON + JSON interfaces
                                (auto-enabled when targeting @protobuf-x/runtime/minimal)
+      --int64-as <repr>        JS representation for 64-bit integer fields:
+                               "bigint" (default), "number", or "string"
   -h, --help                   Show this help message
   -v, --version                Show version
 
 Examples:
   protobuf-x -o ./gen ./protos/user.proto
-  protobuf-x --out ./gen --target both ./protos/*.proto
+  pbx -o ./gen --target both --int64-as number ./protos/*.proto
 `.trim()
 
 export function getHelpText(): string {
@@ -62,6 +72,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         importPaths: [],
         runtimePackage: '@protobuf-x/runtime',
         noJson: false,
+        int64As: 'bigint',
         files: [],
         help: false,
         version: false
@@ -129,6 +140,19 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
         if (arg === '--no-json') {
             result.noJson = true
+            i++
+            continue
+        }
+
+        if (arg === '--int64-as') {
+            i++
+            const val = argv[i]
+            if (val !== 'bigint' && val !== 'number' && val !== 'string') {
+                throw new ArgError(
+                    `Invalid --int64-as value "${val ?? ''}". Must be "bigint", "number", or "string".`
+                )
+            }
+            result.int64As = val
             i++
             continue
         }

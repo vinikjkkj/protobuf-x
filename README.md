@@ -153,7 +153,7 @@ Reproduce: `node --import tsx benchmarks/generated-compare.bench.ts`
 
 ### Type system
 
-- All 15 proto scalar types (with native `bigint` for 64-bit, no `Long` dependency)
+- All 15 proto scalar types (native `bigint` for 64-bit by default; opt-in `number` or `string` via `--int64-as`)
 - Messages, nested messages, enums, nested enums, oneof, maps, packed repeated
 - Proto2 / proto3 / editions 2023
 - Well-known types (`Timestamp`, `Duration`, `Any`, `Struct`, `FieldMask`, wrappers)
@@ -166,6 +166,7 @@ Reproduce: `node --import tsx benchmarks/generated-compare.bench.ts`
 - **Dot-notation nested access**: `User.Profile.Settings.Theme.DARK` (both type and value)
 - **`instanceof` works** — generated classes are real JS classes, not POJOs
 - **Typed JSON interfaces** — `User.toJSON(msg)` returns `UserJSON`, fully typed; erased at compile time so zero bundle cost
+- **POJO input interfaces (`IFoo`)** — every class `Foo` has a peer interface `IUser` with all fields optional+nullable; nested fields use `IUser_Profile` peers (protobufjs-compatible shape, zero bundle cost)
 - **Constructor with `Partial<T>`** — `new User({ name: 'Alice' })` is type-checked
 - **Field defaults emitted** — `name: string = ''` so missing fields are predictable
 - **Optional chaining-friendly** — message fields are `T | undefined`
@@ -218,17 +219,20 @@ When the codegen sees `--runtime-package @protobuf-x/runtime/minimal`, it auto-e
 
 ```bash
 protobuf-x [options] <file.proto ...>
+# or use the short alias:
+pbx [options] <file.proto ...>
 ```
 
-| Option                     | Description                                                  |
-| -------------------------- | ------------------------------------------------------------ |
-| `-o, --out <dir>`          | Output directory (required)                                  |
-| `-t, --target <type>`      | `ts` (default), `js`, or `both`                              |
-| `--import-path <path>`     | Add a directory to the proto import search path (repeatable) |
-| `--runtime-package <name>` | Override runtime package (default `@protobuf-x/runtime`)     |
-| `--no-json`                | Skip `toJSON`/`fromJSON` + JSON interfaces                   |
-| `-h, --help`               | Show help                                                    |
-| `-v, --version`            | Show version                                                 |
+| Option                     | Description                                                       |
+| -------------------------- | ----------------------------------------------------------------- |
+| `-o, --out <dir>`          | Output directory (required)                                       |
+| `-t, --target <type>`      | `ts` (default), `js`, or `both`                                   |
+| `--import-path <path>`     | Add a directory to the proto import search path (repeatable)      |
+| `--runtime-package <name>` | Override runtime package (default `@protobuf-x/runtime`)          |
+| `--no-json`                | Skip `toJSON`/`fromJSON` + JSON interfaces                        |
+| `--int64-as <repr>`        | 64-bit int representation: `bigint` (default), `number`, `string` |
+| `-h, --help`               | Show help                                                         |
+| `-v, --version`            | Show version                                                      |
 
 ### Target reference
 
@@ -258,6 +262,9 @@ protobuf-x --runtime-package @protobuf-x/runtime/minimal --out gen schema.proto
 
 # Compile multiple files with import paths
 protobuf-x --import-path ./schemas --import-path ./vendor --out gen schemas/main.proto
+
+# Use plain `number` for int64 fields (protobufjs-style, loses precision above 2^53)
+protobuf-x --int64-as number --out gen schema.proto
 ```
 
 ---
@@ -431,6 +438,100 @@ for await (const user of decodeStream(User, source)) {
     console.log(user.name)
 }
 ```
+
+---
+
+## Migrating from protobufjs
+
+`protobuf-x` is wire-compatible with `protobufjs` and emits a similar
+class+interface shape, so most static-module migrations are mechanical.
+Three areas typically need attention:
+
+### 1. `IFoo` POJO interface — supported
+
+For every `Foo` class, an `IFoo` interface is also emitted (zero runtime
+cost). Fields are optional+nullable and nested message fields reference
+the `I`-prefixed peer (e.g. `IUser_Profile`), matching the `protobufjs`
+static-module shape exactly.
+
+```ts
+function saveUser(input: IUser) {
+    // Plain POJOs satisfy IUser — no `new User(...)` required at the boundary
+    return User.encode(new User(input)).finish()
+}
+```
+
+### 2. 64-bit integer representation — `--int64-as` flag
+
+`protobufjs` types `int64`/`uint64`/etc. as `(number|Long|null)`, ambiguous
+at runtime. `protobuf-x` defaults to a single, precise type — `bigint` —
+but supports drop-in alternatives:
+
+```bash
+# Match protobufjs numeric users (loses precision above 2^53)
+protobuf-x --int64-as number --out gen schema.proto
+
+# Or use string for safe JSON interop (no precision loss)
+protobuf-x --int64-as string --out gen schema.proto
+```
+
+In all three modes, the storage type is consistent across the interface,
+the class field, and the constructor — no `Long` shim, no runtime
+detection.
+
+### 3. proto3 implicit-presence warning
+
+`protobufjs` returns `undefined` for unset proto3 scalar fields;
+`protobuf-x` follows the spec and decodes them to their **zero value**
+(`0`, `""`, `false`, empty bytes/array). Code like `if (msg.count) { ... }`
+in your `protobufjs` codebase will misbehave when `count` is legitimately
+zero.
+
+Generated `.ts` files include a warning header listing every implicit-
+presence scalar field in the schema. To make a field properly nullable,
+mark it `optional` in your `.proto`:
+
+```proto
+// Before — decodes to 0 when missing
+int32 count = 1;
+
+// After — decodes to undefined when missing
+optional int32 count = 1;
+```
+
+### 4. `oneof` shape — discriminated union (not flat)
+
+`protobufjs` flattens oneofs into parallel optional fields. `protobuf-x`
+uses a discriminated union, which is unambiguous but requires rewriting
+read sites:
+
+```ts
+// protobufjs:
+if (msg.success) handleSuccess(msg.success)
+else if (msg.error) handleError(msg.error)
+
+// protobuf-x:
+switch (msg.result.case) {
+    case 'success':
+        handleSuccess(msg.result.value)
+        break
+    case 'error':
+        handleError(msg.result.value)
+        break
+}
+```
+
+### Cost summary (WAProto.proto: 191 KB, 523 messages, 174 int64 fields)
+
+|                                | `.js` (gzip) | `.d.ts` (gzip) | Build time |
+| ------------------------------ | -----------: | -------------: | ---------: |
+| protobuf-x default             |   **454 KB** |     **105 KB** |   **1.5s** |
+| protobuf-x `--int64-as number` |   **454 KB** |     **105 KB** |   **1.4s** |
+| protobufjs (`pbjs` + `pbts`)   |       750 KB |         180 KB |        23s |
+
+`protobuf-x` is ~40% smaller in both `.js` and `.d.ts` and ~15× faster
+to generate, with `IFoo` interfaces, presence warning header, and
+configurable int64 representation included.
 
 ---
 

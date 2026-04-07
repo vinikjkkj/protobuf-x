@@ -68,6 +68,39 @@ async function buildPackage(name: string) {
         cwd: ROOT
     })
 
+    // Build bin/ entries (CLI executables) — bundled, ESM, with shebang.
+    // Bin source files import from `../src/...`, so we bundle each into a
+    // self-contained file under dist/bin/. `packages: 'external'` keeps
+    // node_modules deps out of the bundle.
+    const binDir = join(pkgDir, 'bin')
+    const binEntries = findTsFiles(binDir)
+    if (binEntries.length > 0) {
+        await esbuild.build({
+            entryPoints: binEntries,
+            outdir: join(pkgDir, 'dist', 'bin'),
+            format: 'esm',
+            platform: 'node',
+            // ES2022 needed for top-level await in CLI entry points
+            target: 'es2022',
+            bundle: true,
+            packages: 'external',
+            sourcemap: true,
+            outExtension: { '.js': '.js' }
+        })
+        // esbuild strips the source `#!/usr/bin/env node` shebang during
+        // bundling — restore it on each generated bin file.
+        const binOutDir = join(pkgDir, 'dist', 'bin')
+        for (const entry of readdirSync(binOutDir, { withFileTypes: true })) {
+            if (entry.isFile() && entry.name.endsWith('.js')) {
+                const full = join(binOutDir, entry.name)
+                const content = readFileSync(full, 'utf-8')
+                if (!content.startsWith('#!')) {
+                    writeFileSync(full, `#!/usr/bin/env node\n${content}`, 'utf-8')
+                }
+            }
+        }
+    }
+
     console.log(`[${name}] Build complete`)
 }
 

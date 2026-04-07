@@ -2,7 +2,7 @@
  * Oneof code generation: discriminated unions and case enums.
  */
 
-import type { ProtoField } from './field-codegen.js'
+import type { Int64Mode, ProtoField } from './field-codegen.js'
 import {
     getTypeScriptType,
     getWriterMethod,
@@ -13,6 +13,23 @@ import {
     getWireType
 } from './field-codegen.js'
 import { CodeTemplate } from './template.js'
+
+function asBigIntExpr(valueExpr: string, int64As: Int64Mode): string {
+    if (int64As === 'bigint') return valueExpr
+    return `BigInt(${valueExpr})`
+}
+
+function fromBigIntExpr(readExpr: string, int64As: Int64Mode): string {
+    if (int64As === 'bigint') return readExpr
+    if (int64As === 'number') return `Number(${readExpr})`
+    return `String(${readExpr})`
+}
+
+function int64TsCast(int64As: Int64Mode): string {
+    if (int64As === 'bigint') return 'bigint'
+    if (int64As === 'number') return 'number'
+    return 'string'
+}
 
 const WIRE_END_GROUP = 4
 
@@ -53,12 +70,16 @@ export function generateOneofCaseEnum(oneof: ProtoOneof, messageTypeName: string
  *     | { case: 'error'; value: ErrorResponse }
  *     | { case: undefined; value?: undefined };
  */
-export function generateOneofType(oneof: ProtoOneof, messageTypeName: string): string {
+export function generateOneofType(
+    oneof: ProtoOneof,
+    messageTypeName: string,
+    int64As: Int64Mode = 'bigint'
+): string {
     const typeName = `${messageTypeName}_${capitalize(oneof.name)}`
     const t = new CodeTemplate()
     t.raw(`export type ${typeName} =`)
     for (const field of oneof.fields) {
-        const tsType = getTypeScriptType(field)
+        const tsType = getTypeScriptType(field, int64As)
         t.raw(`  | { case: '${field.name}'; value: ${tsType} }`)
     }
     t.raw('  | { case: undefined; value?: undefined };')
@@ -78,7 +99,11 @@ export function getOneofFieldDeclaration(oneof: ProtoOneof, messageTypeName: str
  * Generate encode lines for oneof fields.
  * Each field in the oneof is checked via the discriminated union case.
  */
-export function generateOneofEncodeLines(oneof: ProtoOneof, messageTypeName: string): string[] {
+export function generateOneofEncodeLines(
+    oneof: ProtoOneof,
+    messageTypeName: string,
+    int64As: Int64Mode = 'bigint'
+): string[] {
     const lines: string[] = []
     const accessor = `msg.${oneof.name}`
     for (const field of oneof.fields) {
@@ -101,7 +126,9 @@ export function generateOneofEncodeLines(oneof: ProtoOneof, messageTypeName: str
         } else if (field.type === 'bool') {
             lines.push(`  w.bool(${accessor}.value as boolean);`)
         } else if (is64BitLoHi(field.type)) {
-            lines.push(`  const value = ${accessor}.value as bigint;`)
+            const cast = int64TsCast(int64As)
+            const raw = `${accessor}.value as ${cast}`
+            lines.push(`  const value = ${asBigIntExpr(raw, int64As)};`)
             lines.push(
                 `  w.${getWriterMethod(field.type)}(Number(value & 0xFFFFFFFFn), Number((value >> 32n) & 0xFFFFFFFFn));`
             )
@@ -117,7 +144,11 @@ export function generateOneofEncodeLines(oneof: ProtoOneof, messageTypeName: str
  * Generate decode switch cases for oneof fields.
  * Sets the discriminated union with the matched case.
  */
-export function generateOneofDecodeLines(oneof: ProtoOneof, _messageTypeName: string): string[] {
+export function generateOneofDecodeLines(
+    oneof: ProtoOneof,
+    _messageTypeName: string,
+    int64As: Int64Mode = 'bigint'
+): string[] {
     const lines: string[] = []
     const accessor = `msg.${oneof.name}`
     for (const field of oneof.fields) {
@@ -147,8 +178,9 @@ export function generateOneofDecodeLines(oneof: ProtoOneof, _messageTypeName: st
                 `case ${field.number}: ${accessor} = { case: '${field.name}', value: r.bool() }; break;`
             )
         } else if (is64BitLoHi(field.type)) {
+            const readExpr = fromBigIntExpr(`r.${getReaderBigIntMethod(field.type)}()`, int64As)
             lines.push(
-                `case ${field.number}: ${accessor} = { case: '${field.name}', value: r.${getReaderBigIntMethod(field.type)}() }; break;`
+                `case ${field.number}: ${accessor} = { case: '${field.name}', value: ${readExpr} }; break;`
             )
         } else {
             lines.push(
@@ -163,7 +195,11 @@ export function generateOneofDecodeLines(oneof: ProtoOneof, _messageTypeName: st
  * Generate sizeOf lines for oneof fields (two-pass encode).
  * Adds to variable `s` the wire size of the active oneof field.
  */
-export function generateOneofSizeOfLines(oneof: ProtoOneof, _messageTypeName: string): string[] {
+export function generateOneofSizeOfLines(
+    oneof: ProtoOneof,
+    _messageTypeName: string,
+    int64As: Int64Mode = 'bigint'
+): string[] {
     const lines: string[] = []
     const accessor = `msg.${oneof.name}`
     for (const field of oneof.fields) {
@@ -201,8 +237,10 @@ export function generateOneofSizeOfLines(oneof: ProtoOneof, _messageTypeName: st
         ) {
             lines.push(`  s += ${tagSize} + 4;`)
         } else if (is64BitLoHi(field.type)) {
+            const cast = int64TsCast(int64As)
+            const raw = `${accessor}.value as ${cast}`
             lines.push(
-                `  const _v = ${accessor}.value as bigint; s += ${tagSize} + varint64Size(Number(_v & 0xFFFFFFFFn), Number((_v >> 32n) & 0xFFFFFFFFn));`
+                `  const _v = ${asBigIntExpr(raw, int64As)}; s += ${tagSize} + varint64Size(Number(_v & 0xFFFFFFFFn), Number((_v >> 32n) & 0xFFFFFFFFn));`
             )
         } else if (field.type === 'int32') {
             lines.push(`  s += ${tagSize} + int32Size(${accessor}.value as number);`)
@@ -222,7 +260,11 @@ export function generateOneofSizeOfLines(oneof: ProtoOneof, _messageTypeName: st
  * Generate encodeTo lines for oneof fields (two-pass encode).
  * Writes directly into buf at position p.
  */
-export function generateOneofEncodeToLines(oneof: ProtoOneof, _messageTypeName: string): string[] {
+export function generateOneofEncodeToLines(
+    oneof: ProtoOneof,
+    _messageTypeName: string,
+    int64As: Int64Mode = 'bigint'
+): string[] {
     const lines: string[] = []
     const accessor = `msg.${oneof.name}`
     for (const field of oneof.fields) {
@@ -257,12 +299,16 @@ export function generateOneofEncodeToLines(oneof: ProtoOneof, _messageTypeName: 
         } else if (field.type === 'fixed32' || field.type === 'sfixed32') {
             lines.push(`  p = writeFixed32(${accessor}.value as number, buf, p);`)
         } else if (field.type === 'fixed64' || field.type === 'sfixed64') {
+            const cast = int64TsCast(int64As)
+            const raw = `${accessor}.value as ${cast}`
             lines.push(
-                `  const _v = ${accessor}.value as bigint; p = writeFixed64(Number(_v & 0xFFFFFFFFn), Number((_v >> 32n) & 0xFFFFFFFFn), buf, p);`
+                `  const _v = ${asBigIntExpr(raw, int64As)}; p = writeFixed64(Number(_v & 0xFFFFFFFFn), Number((_v >> 32n) & 0xFFFFFFFFn), buf, p);`
             )
         } else if (is64BitLoHi(field.type)) {
+            const cast = int64TsCast(int64As)
+            const raw = `${accessor}.value as ${cast}`
             lines.push(
-                `  const _v = ${accessor}.value as bigint; p = writeVarint64(Number(_v & 0xFFFFFFFFn), Number((_v >> 32n) & 0xFFFFFFFFn), buf, p);`
+                `  const _v = ${asBigIntExpr(raw, int64As)}; p = writeVarint64(Number(_v & 0xFFFFFFFFn), Number((_v >> 32n) & 0xFFFFFFFFn), buf, p);`
             )
         } else if (field.type === 'int32') {
             lines.push(`  p = writeInt32(${accessor}.value as number, buf, p);`)
