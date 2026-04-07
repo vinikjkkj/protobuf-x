@@ -15,7 +15,7 @@
         "lint:fix": "eslint . --fix",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "typecheck": "tsc -b packages/runtime/tsconfig.json packages/parser/tsconfig.json packages/codegen/tsconfig.json",
+        "typecheck": "tsc -p tsconfig.json",
         "bench": "tsx scripts/benchmark.ts",
         "bundle-size": "tsx scripts/bundle-size.ts"
     },

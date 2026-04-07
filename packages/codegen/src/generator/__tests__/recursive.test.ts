@@ -12,7 +12,7 @@ const projectRoot = join(fileURLToPath(import.meta.url), '..', '..', '..', '..',
 const fixturesDir = join(projectRoot, 'test-fixtures')
 const runtimeEntry = join(projectRoot, 'packages', 'runtime', 'src', 'index.ts')
 
-function runtimeSpec(fromDir: string): string {
+function runtimeSpec(): string {
     // Use file:// URL to avoid relative path resolution issues in temp dirs
     return pathToFileURL(runtimeEntry).href
 }
@@ -60,7 +60,7 @@ describe('Recursive message types', () => {
                 '--out',
                 out,
                 '--runtime-package',
-                runtimeSpec(protoDir),
+                runtimeSpec(),
                 join(fixturesDir, 'recursive.proto')
             ])
         )
@@ -102,7 +102,7 @@ describe('Recursive message types', () => {
             '--out',
             out,
             '--runtime-package',
-            runtimeSpec(protoDir),
+            runtimeSpec(),
             join(fixturesDir, 'recursive.proto')
         ])
         assert.equal(exit, 0)
@@ -143,7 +143,7 @@ describe('Recursive message types', () => {
                 '--out',
                 out,
                 '--runtime-package',
-                runtimeSpec(protoDir),
+                runtimeSpec(),
                 join(fixturesDir, 'recursive.proto')
             ])
         )
@@ -156,7 +156,7 @@ describe('Recursive message types', () => {
                 '--out',
                 out,
                 '--runtime-package',
-                runtimeSpec(protoDir),
+                runtimeSpec(),
                 join(fixturesDir, 'recursive.proto')
             ])
         }

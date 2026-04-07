@@ -15,18 +15,22 @@ import type { BenchResult } from './harness.js'
 
 // ── Load generated modules ──────────────────────────────────
 
-// protobuf-x generated JS (ESM)
+// protobuf-x generated JS (ESM). The generated classes have richly typed
+// fields, but at the bench layer we treat them as `Record<string, unknown>`
+// for ergonomic comparison with protobufjs's loose types. Cast through
+// `unknown` to satisfy TS strict overlap rules.
 const xMod = await import('./generated/x/benchmarks/bench_pb.js')
-const XSmall = xMod.SmallMessage as {
+type XCtor = {
     new (init?: Record<string, unknown>): Record<string, unknown>
     encode(msg: unknown, w?: unknown): { finish(): Uint8Array }
     decode(buf: Uint8Array): Record<string, unknown>
     toJSON?(msg: unknown): Record<string, unknown>
     fromJSON?(json: Record<string, unknown>): Record<string, unknown>
 }
-const XMedium = xMod.MediumMessage as typeof XSmall
-const XAddress = xMod.Address as typeof XSmall
-const XLarge = xMod.LargeMessage as typeof XSmall
+const XSmall = xMod.SmallMessage as unknown as XCtor
+const XMedium = xMod.MediumMessage as unknown as XCtor
+const XAddress = xMod.Address as unknown as XCtor
+const XLarge = xMod.LargeMessage as unknown as XCtor
 
 // protobufjs generated JS (CJS static-module)
 const require2 = createRequire(import.meta.url)

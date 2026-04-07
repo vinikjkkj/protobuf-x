@@ -1,8 +1,11 @@
 /**
  * Generic object pool for zero-allocation patterns.
  * Pre-allocates objects and recycles them via acquire()/release().
+ *
+ * If pooled objects have a `reset()` method, it will be invoked when an
+ * object is returned to the pool via {@link release}.
  */
-export class ObjectPool<T extends { reset?(): void }> {
+export class ObjectPool<T extends object> {
     private readonly pool: T[]
     private readonly factory: () => T
     private readonly maxSize: number
@@ -27,8 +30,9 @@ export class ObjectPool<T extends { reset?(): void }> {
      */
     release(obj: T): void {
         if (this.pool.length < this.maxSize) {
-            if (typeof obj.reset === 'function') {
-                obj.reset()
+            const reset = (obj as { reset?(): void }).reset
+            if (typeof reset === 'function') {
+                reset.call(obj)
             }
             this.pool.push(obj)
         }

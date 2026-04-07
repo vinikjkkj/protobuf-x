@@ -5,6 +5,12 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+// Type-only import: gives us static types for the runtime symbols loaded
+// dynamically below via `await import(runtimeSpec)`. The actual runtime
+// instance still comes from the dynamic import (so the test exercises real
+// module loading), but we cast it to this type for proper IntelliSense and
+// strict type checking.
+import type * as RuntimeModule from '../../../runtime/src/index.js'
 import { main } from '../cli/main.js'
 
 const projectRoot = join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..')
@@ -533,7 +539,7 @@ describe('e2e: well-known types JSON', () => {
 // ---------------------------------------------------------------------------
 describe('e2e: service client', () => {
     it('creates ServiceClient and performs unary call through mock transport', async () => {
-        const runtime = await import(runtimeSpec)
+        const runtime = (await import(runtimeSpec)) as typeof RuntimeModule
         const { ServiceClient, Message, BinaryWriter, BinaryReader } = runtime
 
         // Create a simple message class using the same decode pattern
@@ -544,10 +550,23 @@ describe('e2e: service client', () => {
                 super()
                 if (init?.value !== undefined) this.value = init.value
             }
-            static readonly descriptor = {
-                name: 'SimpleMsg',
-                fullName: 'test.SimpleMsg',
-                fields: [{ name: 'value', no: 1, kind: 'scalar', type: 5, jsonName: 'value' }]
+            static readonly descriptor: RuntimeModule.MessageDescriptor = {
+                name: 'test.SimpleMsg',
+                fields: [
+                    {
+                        no: 1,
+                        name: 'value',
+                        wireType: 0,
+                        tag: new Uint8Array([0x08])
+                    }
+                ],
+                oneofs: [],
+                nestedTypes: new Map(),
+                nestedEnums: new Map(),
+                reservedRanges: [],
+                reservedNames: [],
+                extensionRanges: [],
+                extensions: []
             }
             static encode(msg: SimpleMsg, w?: any): any {
                 const writer = w ?? BinaryWriter.create()
@@ -744,12 +763,12 @@ describe('e2e: streaming', () => {
         }
 
         assert.equal(decoded.length, 3)
-        assert.equal(decoded[0].seq, 1)
-        assert.equal(decoded[0].code, 100)
-        assert.equal(decoded[1].seq, 2)
-        assert.equal(decoded[1].code, 200)
-        assert.equal(decoded[2].seq, 3)
-        assert.equal(decoded[2].code, 300)
+        assert.equal(decoded[0]!.seq, 1)
+        assert.equal(decoded[0]!.code, 100)
+        assert.equal(decoded[1]!.seq, 2)
+        assert.equal(decoded[1]!.code, 200)
+        assert.equal(decoded[2]!.seq, 3)
+        assert.equal(decoded[2]!.code, 300)
     })
 
     it('handles chunked delivery across multiple yields', async () => {
@@ -800,8 +819,8 @@ describe('e2e: streaming', () => {
         }
 
         assert.equal(decoded.length, 2)
-        assert.equal(decoded[0].val, 10)
-        assert.equal(decoded[1].val, 20)
+        assert.equal(decoded[0]!.val, 10)
+        assert.equal(decoded[1]!.val, 20)
     })
 })
 

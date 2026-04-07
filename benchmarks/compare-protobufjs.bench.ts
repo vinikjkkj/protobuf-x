@@ -127,18 +127,18 @@ if (xFromPbLarge.title !== 'Benchmark Test Message') {
     process.exit(1)
 }
 
-// protobuf-x -> protobufjs
-const pbFromXSmall = PbSmall.decode(xSmallBuf)
+// protobuf-x -> protobufjs (decode returns protobufjs.Message<{}> — cast to read fields)
+const pbFromXSmall = PbSmall.decode(xSmallBuf) as unknown as { name: string; id: number }
 if (pbFromXSmall.name !== 'Alice' || pbFromXSmall.id !== 42) {
     console.error('FAIL: x->pb small')
     process.exit(1)
 }
-const pbFromXMedium = PbMedium.decode(xMediumBuf)
+const pbFromXMedium = PbMedium.decode(xMediumBuf) as unknown as { name: string; age: number }
 if (pbFromXMedium.name !== 'Bob' || pbFromXMedium.age !== 30) {
     console.error('FAIL: x->pb medium')
     process.exit(1)
 }
-const pbFromXLarge = PbLarge.decode(xLargeBuf)
+const pbFromXLarge = PbLarge.decode(xLargeBuf) as unknown as { title: string }
 if (pbFromXLarge.title !== 'Benchmark Test Message') {
     console.error('FAIL: x->pb large')
     process.exit(1)
