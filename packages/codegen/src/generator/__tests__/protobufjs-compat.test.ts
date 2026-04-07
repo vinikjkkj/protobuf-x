@@ -1,8 +1,8 @@
 /**
  * Tests for protobufjs migration features:
- *  - Etapa 1: `IFoo` POJO interface emission
- *  - Etapa 2: proto3 implicit-presence warning header
- *  - Etapa 3: `--int64-as` flag (bigint | number | string)
+ *  - `IFoo` POJO interface emission
+ *  - proto3 implicit-presence warning header
+ *  - `--int64-as` flag (bigint | number | string)
  */
 
 import assert from 'node:assert/strict'
@@ -29,7 +29,7 @@ function makeProto(messages: ProtoFile['messages']): ProtoFile {
     }
 }
 
-describe('Etapa 1: IFoo POJO interface', () => {
+describe('IFoo POJO interface', () => {
     it('emits an `IFoo` interface alongside the class', () => {
         const proto = makeProto([
             {
@@ -147,7 +147,7 @@ describe('Etapa 1: IFoo POJO interface', () => {
     })
 })
 
-describe('Etapa 2: implicit-presence warning header', () => {
+describe('implicit-presence warning header', () => {
     it('emits a warning listing implicit-presence scalar fields', () => {
         const proto = makeProto([
             {
@@ -233,7 +233,7 @@ describe('Etapa 2: implicit-presence warning header', () => {
     })
 })
 
-describe('Etapa 3: --int64-as flag', () => {
+describe('--int64-as flag', () => {
     const int64Proto = (): ProtoFile =>
         makeProto([
             {
@@ -499,5 +499,241 @@ describe('JS target: TS-only syntax stripping (regression)', () => {
         const { module } = await generateAndImportJsModule(proto, 'js_import_complex_pb.js')
         assert.equal(typeof module['M'], 'function')
         assert.equal(typeof module['M_Inner'], 'function')
+    })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Deep nested namespace propagation (3+ levels) — fix for the bug where
+// `Parent.Child.GrandChild` resolved as a value but `Parent.Child.GrandChild`
+// failed as a type because `export type Child = Parent_Child` is only a type
+// alias and does NOT carry along the merged namespace.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Deep nested namespace propagation', () => {
+    function makeDeepProto(): ProtoFile {
+        return makeProto([
+            {
+                name: 'SessionStructure',
+                fields: [
+                    {
+                        name: 'chain',
+                        number: 1,
+                        type: 'Chain',
+                        typeExpr: 'SessionStructure_Chain',
+                        label: 'optional',
+                        isMessage: true
+                    }
+                ],
+                oneofs: [],
+                nestedMessages: [
+                    {
+                        name: 'Chain',
+                        generatedName: 'SessionStructure_Chain',
+                        fields: [
+                            {
+                                name: 'key',
+                                number: 1,
+                                type: 'MessageKey',
+                                typeExpr: 'SessionStructure_Chain_MessageKey',
+                                label: 'optional',
+                                isMessage: true
+                            }
+                        ],
+                        oneofs: [],
+                        nestedMessages: [
+                            {
+                                name: 'MessageKey',
+                                generatedName: 'SessionStructure_Chain_MessageKey',
+                                fields: [
+                                    {
+                                        name: 'index',
+                                        number: 1,
+                                        type: 'int32',
+                                        label: 'optional'
+                                    }
+                                ],
+                                oneofs: [],
+                                nestedMessages: [],
+                                nestedEnums: []
+                            }
+                        ],
+                        nestedEnums: []
+                    }
+                ],
+                nestedEnums: []
+            }
+        ])
+    }
+
+    it('uses `export import` for nested types that have their own children', () => {
+        const src = generateTypeScript(makeDeepProto())
+        // Middle level (Chain has children) — must use export import so its
+        // namespace propagates upward.
+        assert.match(
+            src,
+            /export namespace SessionStructure \{[^}]*export import Chain = SessionStructure_Chain/s
+        )
+    })
+
+    it('uses const+type for leaf nested types (no merged namespace to propagate)', () => {
+        const src = generateTypeScript(makeDeepProto())
+        // Leaf level (MessageKey has no children) — must NOT use export import,
+        // because the leaf class has no namespace component and TS would error
+        // with "only refers to a type, but is being used as a namespace".
+        assert.match(
+            src,
+            /export namespace SessionStructure_Chain \{[^}]*export const MessageKey = SessionStructure_Chain_MessageKey/s
+        )
+        assert.doesNotMatch(
+            src,
+            /export namespace SessionStructure_Chain \{[^}]*export import MessageKey/s
+        )
+    })
+
+    it('3-level deep type access compiles when imported by a consumer', async () => {
+        // Generate, write to disk, and import to verify the namespace alias
+        // chain actually resolves at compile time. The earlier `export type`
+        // form would let the *value* path work but break type-only access at
+        // 3 levels deep, which a static-only test can't catch.
+        const { module } = await generateAndImportModule(makeDeepProto(), 'deep_pb.ts')
+        const SessionStructure = module['SessionStructure'] as {
+            new (init?: Record<string, unknown>): unknown
+            Chain: {
+                new (init?: Record<string, unknown>): unknown
+                MessageKey: { new (init?: Record<string, unknown>): { index: number } }
+            }
+        }
+        assert.equal(typeof SessionStructure.Chain, 'function')
+        assert.equal(typeof SessionStructure.Chain.MessageKey, 'function')
+        const k = new SessionStructure.Chain.MessageKey({ index: 42 })
+        assert.equal(k.index, 42)
+    })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Class field types using IFoo peer (POJO-friendly fields). Class field decls
+// reference the I-prefixed peer interface for message-typed fields, so plain
+// object literals satisfy `typeof Foo.prototype.bar` without forcing
+// `new Bar(...)` at every boundary.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Class field types use IFoo peer', () => {
+    function makeNestedProto(): ProtoFile {
+        return makeProto([
+            {
+                name: 'User',
+                fields: [
+                    {
+                        name: 'profile',
+                        number: 1,
+                        type: 'Profile',
+                        typeExpr: 'User_Profile',
+                        label: 'optional',
+                        isMessage: true
+                    },
+                    {
+                        name: 'friends',
+                        number: 2,
+                        type: 'User',
+                        label: 'repeated',
+                        isMessage: true
+                    },
+                    { name: 'name', number: 3, type: 'string', label: 'optional' }
+                ],
+                oneofs: [],
+                nestedMessages: [
+                    {
+                        name: 'Profile',
+                        generatedName: 'User_Profile',
+                        fields: [{ name: 'bio', number: 1, type: 'string', label: 'optional' }],
+                        oneofs: [],
+                        nestedMessages: [],
+                        nestedEnums: []
+                    }
+                ],
+                nestedEnums: []
+            }
+        ])
+    }
+
+    it('singular message field uses I-peer type', () => {
+        const src = generateTypeScript(makeNestedProto())
+        // Class field declaration references the I-peer, not the strict class.
+        assert.match(src, /export class User .*\{[\s\S]*?profile\?: IUser_Profile;/)
+    })
+
+    it('repeated message field uses I-peer element type', () => {
+        const src = generateTypeScript(makeNestedProto())
+        assert.match(src, /export class User .*\{[\s\S]*?friends: IUser\[\] = \[\];/)
+    })
+
+    it('scalar field types are unchanged (no IFoo widening for primitives)', () => {
+        const src = generateTypeScript(makeNestedProto())
+        // Scalar fields stay as the bare scalar type — no `IString`, no nullable.
+        assert.match(src, /export class User .*\{[\s\S]*?name: string = '';/)
+    })
+
+    it('static encode/sizeOf/encodeTo accept the I-peer interface as parameter', () => {
+        const src = generateTypeScript(makeNestedProto())
+        assert.match(src, /static encode\(msg: IUser, w\?: BinaryWriter\): BinaryWriter/)
+        assert.match(src, /static sizeOf\(msg: IUser\): number/)
+        assert.match(src, /static encodeTo\(msg: IUser, buf: Uint8Array, p: number\): number/)
+    })
+
+    it('decode still returns the strict class type (instance)', () => {
+        const src = generateTypeScript(makeNestedProto())
+        // decode returns a real class instance (not the I-peer), preserving
+        // narrow downstream typing for the consumer.
+        assert.match(src, /static decode\(input: Uint8Array, length\?: number\): User/)
+        assert.match(src, /static decodeFrom\(r: BinaryReader, end: number\): User/)
+    })
+
+    it('encode body uses loose `!= null` for message fields', () => {
+        const src = generateTypeScript(makeNestedProto())
+        // The skip-default check tolerates explicit `null` from POJO inputs.
+        assert.match(src, /msg\.profile != null/)
+    })
+
+    it('encode body uses loose `!= null && !== ""` for scalar fields', () => {
+        const src = generateTypeScript(makeNestedProto())
+        assert.match(src, /msg\.name != null && msg\.name !== ''/)
+    })
+
+    it('repeated field iteration handles null POJO input', () => {
+        const src = generateTypeScript(makeNestedProto())
+        assert.match(src, /for \(const v of \(msg\.friends \?\? \[\]\)\)/)
+    })
+
+    it('end-to-end: POJO literal can be passed to encode without instantiation', async () => {
+        const { module } = await generateAndImportModule(makeNestedProto(), 'pojo_encode_pb.ts')
+        const User = module['User'] as {
+            new (init?: Record<string, unknown>): unknown
+            encode(msg: unknown): { finish(): Uint8Array }
+            decode(buf: Uint8Array): { name: string; profile?: { bio: string } }
+        }
+        // Pure POJO — no `new User()` anywhere
+        const buf = User.encode({
+            name: 'Alice',
+            profile: { bio: 'hello' },
+            friends: [{ name: 'Bob' }]
+        }).finish()
+        const back = User.decode(buf)
+        assert.equal(back.name, 'Alice')
+        assert.equal(back.profile?.bio, 'hello')
+    })
+
+    it('end-to-end: explicit `null` field is treated as missing', async () => {
+        const { module } = await generateAndImportModule(makeNestedProto(), 'null_field_pb.ts')
+        const User = module['User'] as {
+            encode(msg: unknown): { finish(): Uint8Array }
+            decode(buf: Uint8Array): { name: string; profile?: { bio: string } }
+        }
+        // Explicit null on a message field — must NOT crash, must be skipped.
+        const buf = User.encode({ name: '', profile: null, friends: null }).finish()
+        // All fields are at-default → empty wire output
+        assert.equal(buf.length, 0)
+        const back = User.decode(buf)
+        assert.equal(back.name, '')
+        assert.equal(back.profile, undefined)
     })
 })

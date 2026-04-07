@@ -9,7 +9,6 @@ import type { ProtoRange } from './extension-codegen.js'
 import type { ProtoField } from './field-codegen.js'
 import {
     fieldDescriptorConstName,
-    getTypeScriptType,
     getDefaultValue,
     getWireType,
     computeTagBytes,
@@ -213,9 +212,19 @@ export function generateMessage(
     t.block(
         `export class ${generatedName} extends ${RUNTIME_MESSAGE_BASE}<${generatedName}> implements ${interfaceName} {`,
         () => {
-            // Field declarations with defaults
+            // Field declarations with defaults.
+            //
+            // We use `getInterfaceFieldType` (the same helper that powers IFoo)
+            // instead of `getTypeScriptType`. They are identical for scalars and
+            // enums, but for message-typed fields the interface form references
+            // the I-prefixed peer (e.g. `IUser_Profile`) instead of the strict
+            // class type. This is a deliberate concession to protobufjs migration:
+            // a function returning `typeof msg.fieldName` then gets a POJO type,
+            // so plain object literals can satisfy it without instantiating the
+            // class first. The class itself still satisfies its `implements IFoo`
+            // clause because every class field is structurally a valid I-peer.
             for (const field of regularFields) {
-                const tsType = getTypeScriptType(field, int64As)
+                const tsType = getInterfaceFieldType(field, int64As)
                 const defaultVal = getDefaultValue(field, int64As)
                 if (
                     (field.hasPresence || field.isRequired) &&
@@ -281,9 +290,12 @@ export function generateMessage(
 
             t.blank()
 
-            // Static encode
+            // Static encode. Param type is the I-peer (`IFoo`) so plain POJOs
+            // satisfy it without forcing `new Foo(...)` at every boundary —
+            // matches protobufjs ergonomics. The class itself is structurally
+            // a valid I-peer, so existing instance call sites still work.
             t.block(
-                `static encode(msg: ${generatedName}, w?: BinaryWriter): BinaryWriter {`,
+                `static encode(msg: ${interfaceName}, w?: BinaryWriter): BinaryWriter {`,
                 () => {
                     // When no writer provided:
                     // - For instances: use toBinary() which inlines immediate-level nested sizes
@@ -323,8 +335,8 @@ export function generateMessage(
 
             t.blank()
 
-            // Static sizeOf
-            t.block(`static sizeOf(msg: ${generatedName}): number {`, () => {
+            // Static sizeOf — accepts the I-peer (see encode comment).
+            t.block(`static sizeOf(msg: ${interfaceName}): number {`, () => {
                 t.line('let s = 0;')
 
                 // Regular fields
@@ -348,9 +360,9 @@ export function generateMessage(
 
             t.blank()
 
-            // Static encodeTo
+            // Static encodeTo — accepts the I-peer (see encode comment).
             t.block(
-                `static encodeTo(msg: ${generatedName}, buf: Uint8Array, p: number): number {`,
+                `static encodeTo(msg: ${interfaceName}, buf: Uint8Array, p: number): number {`,
                 () => {
                     // Regular fields
                     for (const field of regularFields) {
@@ -521,10 +533,12 @@ export function generateMessage(
                             `if (${check}) s += ${tagSize} + varint32Size(${accessor}.length) + ${accessor}.length;`
                         )
                     } else if (field.isMessage) {
-                        // Lazy cache: compute nested sizeOf only if field is set
+                        // Lazy cache: compute nested sizeOf only if field is set.
+                        // Use loose `!= null` so explicit `null` from a POJO assignment
+                        // is treated like missing (matches the I-peer interface shape).
                         const typeRef = fieldTypeExprForField(field)
                         t.line(
-                            `if (${accessor} !== undefined) { _ms_${field.name} = ${typeRef}.sizeOf(${accessor}); s += ${tagSize} + varint32Size(_ms_${field.name}) + _ms_${field.name}; }`
+                            `if (${accessor} != null) { _ms_${field.name} = ${typeRef}.sizeOf(${accessor}); s += ${tagSize} + varint32Size(_ms_${field.name}) + _ms_${field.name}; }`
                         )
                     } else if (field.type === 'bool') {
                         t.line(`if (${check}) s += ${tagSize + 1};`)
@@ -609,7 +623,7 @@ export function generateMessage(
                     } else if (field.isMessage) {
                         const typeRef = fieldTypeExprForField(field)
                         t.line(
-                            `if (${accessor} !== undefined) { ${tagBytes} p = writeVarint(_ms_${field.name}, buf, p); p = ${typeRef}.encodeTo(${accessor}, buf, p); }`
+                            `if (${accessor} != null) { ${tagBytes} p = writeVarint(_ms_${field.name}, buf, p); p = ${typeRef}.encodeTo(${accessor}, buf, p); }`
                         )
                     } else {
                         const lines = generateEncodeToField(field, fieldScope, int64As)
@@ -711,8 +725,13 @@ export function generateMessage(
             t.blank()
 
             if (!noJson) {
-                // Static toJSON — uses jsonName for keys
-                t.block(`static toJSON(msg: ${generatedName}): ${jsonName} {`, () => {
+                // Static toJSON — accepts the I-peer (see encode comment). Uses jsonName for keys.
+                // The `as any` casts on assignment match the existing `fromJSON as any`
+                // convention: the JSON interface declares stricter types than the I-peer
+                // (e.g. `number` vs `number | null`), so we need to bypass the structural
+                // check. At runtime an explicit `null` field would round-trip through
+                // toJSON unchanged, which matches the proto3 JSON spec (null == default).
+                t.block(`static toJSON(msg: ${interfaceName}): ${jsonName} {`, () => {
                     t.line(`const json = {} as ${jsonName};`)
                     for (const field of regularFields) {
                         const jsonKey = field.jsonName ?? toCamelCase(field.name)
@@ -723,7 +742,7 @@ export function generateMessage(
                             !field.mapKeyType
                         ) {
                             t.line(
-                                `if (${accessor} !== undefined) json['${jsonKey}'] = ${accessor};`
+                                `if (${accessor} != null) json['${jsonKey}'] = ${accessor} as any;`
                             )
                         } else if (
                             field.isMessage &&
@@ -731,15 +750,15 @@ export function generateMessage(
                             !field.mapKeyType
                         ) {
                             t.line(
-                                `if (${accessor} !== undefined) json['${jsonKey}'] = ${accessor};`
+                                `if (${accessor} != null) json['${jsonKey}'] = ${accessor} as any;`
                             )
                         } else {
-                            t.line(`json['${jsonKey}'] = ${accessor};`)
+                            t.line(`json['${jsonKey}'] = ${accessor} as any;`)
                         }
                     }
                     for (const oneof of message.oneofs) {
                         const jsonKey = oneof.name
-                        t.line(`json['${jsonKey}'] = msg.${oneof.name};`)
+                        t.line(`json['${jsonKey}'] = msg.${oneof.name} as any;`)
                     }
                     t.line('return json;')
                 })
@@ -797,18 +816,30 @@ function generateNestedNamespaceMerge(
 ): string {
     // Emits `export namespace <Parent> { ... }` which merges with the parent class
     // declaration (class+namespace merge) to add nested types as static-like members.
-    // Each nested type gets both `const` and `type` aliases so `new Parent.Child()`
-    // works and `const x: Parent.Child = ...` type-checks.
     //
-    // Note: we only expose DIRECT children here. For deeper chains (e.g.
-    // Parent.Child.GrandChild), each nested message emits its own namespace merge
-    // block at the top level, which merges with its flat class declaration
-    // (e.g. `namespace Parent_Child { export const GrandChild = ... }`).
-    // Users access deeper types via `Parent.Child.GrandChild` at runtime because
-    // `Parent.Child === Parent_Child` (same constructor reference).
+    // For nested messages that themselves have children (i.e. have their own merged
+    // namespace block), we re-export via `export import Child = Parent_Child;`. This
+    // is a TS-specific form that brings along the *entire merged symbol* (value +
+    // type + namespace), so chains deeper than one level resolve:
+    //
+    //     Parent.Child.GrandChild     // value access
+    //     Parent.Child.GrandChild     // type access (3 levels)
+    //     Parent.Child.IGrandChild    // POJO peer access
+    //
+    // A plain `export type Child = Parent_Child` is *only* a type alias and does
+    // NOT carry the namespace forward, so deep accesses fail to resolve.
+    //
+    // For leaf nested messages (no children) we keep the old `export const` +
+    // `export type` pair, because `export import X = Y` requires `Y` to have a
+    // namespace component — leaf classes only have a class declaration, so the
+    // import form raises "only refers to a type, but is being used as a namespace".
+    //
+    // The `IChild` peer interface always uses `export type` because it has no
+    // namespace merged with it.
     const t = new CodeTemplate()
     t.block(`export namespace ${parentGeneratedName} {`, () => {
         for (const nestedEnum of message.nestedEnums) {
+            // Enums never have a merged namespace, so always use the const+type form.
             const nestedName = nestedEnum.name
             const nestedGen = nestedEnum.generatedName ?? nestedName
             t.line(`export const ${nestedName} = ${nestedGen};`)
@@ -817,8 +848,15 @@ function generateNestedNamespaceMerge(
         for (const nested of message.nestedMessages) {
             const nestedName = nested.name
             const nestedGen = nested.generatedName ?? nestedName
-            t.line(`export const ${nestedName} = ${nestedGen};`)
-            t.line(`export type ${nestedName} = ${nestedGen};`)
+            const hasChildren = nested.nestedMessages.length > 0 || nested.nestedEnums.length > 0
+            if (hasChildren) {
+                // Has its own namespace block — use `export import` to propagate it.
+                t.line(`export import ${nestedName} = ${nestedGen};`)
+            } else {
+                // Leaf — fall back to const+type alias.
+                t.line(`export const ${nestedName} = ${nestedGen};`)
+                t.line(`export type ${nestedName} = ${nestedGen};`)
+            }
             // POJO interface alias: `Parent.IChild` resolves to `IParent_Child`
             t.line(`export type I${nestedName} = I${nestedGen};`)
             if (!noJson) {
@@ -840,8 +878,11 @@ function computeTagSize(field: ProtoField): number {
 
 function getDefaultCheck(field: ProtoField): string {
     const a = `this.${field.name}`
-    if (field.hasPresence || field.isRequired) return `${a} !== undefined`
-    if (field.isMessage) return `${a} !== undefined`
+    // Use loose `!= null` for fields that can carry an explicit `null` from a
+    // POJO (the I-peer interface declares them as `T | null`). Catches both
+    // `null` and `undefined` in one comparison.
+    if (field.hasPresence || field.isRequired) return `${a} != null`
+    if (field.isMessage) return `${a} != null`
     if (field.isEnum) return `${a} !== 0`
     switch (field.type) {
         case 'bool':

@@ -517,11 +517,21 @@ export function generateFieldDescriptor(field: ProtoField, scope?: string): stri
  */
 function encodeDefaultCheck(field: ProtoField): string {
     const accessor = `msg.${safeName(field.name)}`
-    if (field.hasPresence) {
-        return `${accessor} !== undefined`
-    }
-    if (field.isMessage) return `${accessor} !== undefined`
-    if (field.isEnum) return `${accessor} !== 0`
+    // The IFoo interface declares every field as `T | null`, so when encode
+    // takes the I-peer as its parameter, every field value is `T | null |
+    // undefined`. The previous strict checks (`!== 0`, `!== ''`) returned
+    // true for `null`/`undefined` and let those values fall through into the
+    // writer, where TS rejected them and runtime would crash.
+    //
+    // Each branch below pairs `!= null` (catches both null and undefined in
+    // one comparison) with the existing skip-default check, so:
+    //   - class instance with field set to default value → skipped (unchanged)
+    //   - POJO with field omitted (undefined)            → skipped (was wrong)
+    //   - POJO with field explicitly null               → skipped (was wrong)
+    //   - any non-default value                          → encoded (unchanged)
+    if (field.hasPresence) return `${accessor} != null`
+    if (field.isMessage) return `${accessor} != null`
+    if (field.isEnum) return `${accessor} != null && ${accessor} !== 0`
     switch (field.type) {
         case 'double':
         case 'float':
@@ -530,21 +540,21 @@ function encodeDefaultCheck(field: ProtoField): string {
         case 'sint32':
         case 'fixed32':
         case 'sfixed32':
-            return `${accessor} !== 0`
+            return `${accessor} != null && ${accessor} !== 0`
         case 'int64':
         case 'uint64':
         case 'sint64':
         case 'fixed64':
         case 'sfixed64':
-            return `${accessor} !== 0n`
+            return `${accessor} != null && ${accessor} !== 0n`
         case 'bool':
-            return `${accessor} !== false`
+            return `${accessor} != null && ${accessor} !== false`
         case 'string':
-            return `${accessor} !== ''`
+            return `${accessor} != null && ${accessor} !== ''`
         case 'bytes':
-            return `${accessor}.length > 0`
+            return `${accessor} != null && ${accessor}.length > 0`
         default:
-            return `${accessor} !== undefined`
+            return `${accessor} != null`
     }
 }
 
@@ -564,7 +574,7 @@ export function generateEncodeField(
     // Map field
     if (field.mapKeyType && field.mapValueType) {
         const lines: string[] = []
-        lines.push(`for (const [k, v] of ${accessor}) {`)
+        lines.push(`for (const [k, v] of (${accessor} ?? new Map())) {`)
         lines.push(`  w.raw(${fdName}.tag);`)
         lines.push('  w.fork();')
         // key: field 1
@@ -620,30 +630,30 @@ export function generateEncodeField(
         const lines: string[] = []
         if (field.packed && isScalarType(field.type)) {
             // Packed encoding
-            lines.push(`if (${accessor}.length > 0) {`)
+            lines.push(`if ((${accessor}?.length ?? 0) > 0) {`)
             lines.push(`  w.raw(${fdName}.tag);`)
             lines.push('  w.fork();')
             if (is64BitLoHi(field.type)) {
                 const vv = asBigIntExpr('v', int64As)
                 lines.push(
-                    `  for (const v of ${accessor}) { w.${getWriterMethod(field.type)}(Number(${vv} & 0xFFFFFFFFn), Number((${vv} >> 32n) & 0xFFFFFFFFn)); }`
+                    `  for (const v of (${accessor} ?? [])) { w.${getWriterMethod(field.type)}(Number(${vv} & 0xFFFFFFFFn), Number((${vv} >> 32n) & 0xFFFFFFFFn)); }`
                 )
             } else {
                 lines.push(
-                    `  for (const v of ${accessor}) { w.${getWriterMethod(field.type)}(v); }`
+                    `  for (const v of (${accessor} ?? [])) { w.${getWriterMethod(field.type)}(v); }`
                 )
             }
             lines.push('  w.join();')
             lines.push('}')
         } else if (field.isMessage && field.isGroup) {
-            lines.push(`for (const v of ${accessor}) {`)
+            lines.push(`for (const v of (${accessor} ?? [])) {`)
             lines.push(`  w.raw(${fdName}.tag);`)
             lines.push(`  ${typeRef}.encode(v, w);`)
             lines.push(`  w.tag(${field.number}, ${WIRE_END_GROUP});`)
             lines.push('}')
         } else if (field.isMessage) {
             // Repeated message
-            lines.push(`for (const v of ${accessor}) {`)
+            lines.push(`for (const v of (${accessor} ?? [])) {`)
             lines.push(`  w.raw(${fdName}.tag);`)
             lines.push('  w.fork();')
             lines.push(`  ${typeRef}.encode(v, w);`)
@@ -655,46 +665,53 @@ export function generateEncodeField(
             if (is64BitLoHi(field.type)) {
                 const vv = asBigIntExpr('v', int64As)
                 lines.push(
-                    `for (const v of ${accessor}) { w.raw(${fdName}.tag); w.${method}(Number(${vv} & 0xFFFFFFFFn), Number((${vv} >> 32n) & 0xFFFFFFFFn)); }`
+                    `for (const v of (${accessor} ?? [])) { w.raw(${fdName}.tag); w.${method}(Number(${vv} & 0xFFFFFFFFn), Number((${vv} >> 32n) & 0xFFFFFFFFn)); }`
                 )
             } else {
-                lines.push(`for (const v of ${accessor}) { w.raw(${fdName}.tag); w.${method}(v); }`)
+                lines.push(
+                    `for (const v of (${accessor} ?? [])) { w.raw(${fdName}.tag); w.${method}(v); }`
+                )
             }
         }
         return lines
     }
 
-    // Singular message field
+    // Singular message field. Use loose `!= null` so that an explicit `null`
+    // from a POJO input (allowed by the I-peer interface) is treated like
+    // missing. The TS narrowing inside the block then resolves to the
+    // non-null I-peer type, which the inner `encode` accepts.
     if (field.isMessage && field.isGroup) {
         if (field.isRequired) {
             return [
-                `if (${accessor} === undefined) { throw new Error('Missing required field: ${field.name}'); }`,
+                `if (${accessor} == null) { throw new Error('Missing required field: ${field.name}'); }`,
                 `w.raw(${fdName}.tag); ${typeRef}.encode(${accessor}, w); w.tag(${field.number}, ${WIRE_END_GROUP});`
             ]
         }
         return [
-            `if (${accessor} !== undefined) { w.raw(${fdName}.tag); ${typeRef}.encode(${accessor}, w); w.tag(${field.number}, ${WIRE_END_GROUP}); }`
+            `if (${accessor} != null) { w.raw(${fdName}.tag); ${typeRef}.encode(${accessor}, w); w.tag(${field.number}, ${WIRE_END_GROUP}); }`
         ]
     }
 
     if (field.isMessage) {
         if (field.isRequired) {
             return [
-                `if (${accessor} === undefined) { throw new Error('Missing required field: ${field.name}'); }`,
+                `if (${accessor} == null) { throw new Error('Missing required field: ${field.name}'); }`,
                 `w.raw(${fdName}.tag); w.fork(); ${typeRef}.encode(${accessor}, w); w.join();`
             ]
         }
         return [
-            `if (${accessor} !== undefined) { w.raw(${fdName}.tag); w.fork(); ${typeRef}.encode(${accessor}, w); w.join(); }`
+            `if (${accessor} != null) { w.raw(${fdName}.tag); w.fork(); ${typeRef}.encode(${accessor}, w); w.join(); }`
         ]
     }
 
     // Singular enum field
     if (field.isEnum) {
-        const enumCheck = field.hasPresence ? `${accessor} !== undefined` : `${accessor} !== 0`
+        const enumCheck = field.hasPresence
+            ? `${accessor} != null`
+            : `${accessor} != null && ${accessor} !== 0`
         if (field.isRequired) {
             return [
-                `if (${accessor} === undefined) { throw new Error('Missing required field: ${field.name}'); }`,
+                `if (${accessor} == null) { throw new Error('Missing required field: ${field.name}'); }`,
                 `w.raw(${fdName}.tag); w.uint32(${accessor});`
             ]
         }
@@ -849,7 +866,7 @@ export function generateSizeOfField(
     // Map field
     if (field.mapKeyType && field.mapValueType) {
         const lines: string[] = []
-        lines.push(`for (const [k, v] of ${accessor}) {`)
+        lines.push(`for (const [k, v] of (${accessor} ?? new Map())) {`)
         lines.push('  let _es = 0;')
         // key: field 1
         const keyWire = scalarWireType(field.mapKeyType)
@@ -894,38 +911,40 @@ export function generateSizeOfField(
     if (field.label === 'repeated') {
         const lines: string[] = []
         if (field.packed && isScalarType(field.type)) {
-            lines.push(`if (${accessor}.length > 0) {`)
+            lines.push(`if ((${accessor}?.length ?? 0) > 0) {`)
             lines.push('  let _ps = 0;')
             lines.push(
-                `  for (const v of ${accessor}) { _ps += ${scalarSizeExpr(field.type, 'v', int64As)}; }`
+                `  for (const v of (${accessor} ?? [])) { _ps += ${scalarSizeExpr(field.type, 'v', int64As)}; }`
             )
             lines.push(`  s += ${tagSize} + varint32Size(_ps) + _ps;`)
             lines.push('}')
         } else if (field.packed && field.isEnum) {
-            lines.push(`if (${accessor}.length > 0) {`)
+            lines.push(`if ((${accessor}?.length ?? 0) > 0) {`)
             lines.push('  let _ps = 0;')
-            lines.push(`  for (const v of ${accessor}) { _ps += varint32Size(v); }`)
+            lines.push(`  for (const v of (${accessor} ?? [])) { _ps += varint32Size(v); }`)
             lines.push(`  s += ${tagSize} + varint32Size(_ps) + _ps;`)
             lines.push('}')
         } else if (field.isMessage) {
-            lines.push(`for (const v of ${accessor}) {`)
+            lines.push(`for (const v of (${accessor} ?? [])) {`)
             lines.push(`  const _ms = ${typeRef}.sizeOf(v);`)
             lines.push(`  s += ${tagSize} + varint32Size(_ms) + _ms;`)
             lines.push('}')
         } else if (field.isEnum) {
-            lines.push(`for (const v of ${accessor}) { s += ${tagSize} + varint32Size(v); }`)
+            lines.push(
+                `for (const v of (${accessor} ?? [])) { s += ${tagSize} + varint32Size(v); }`
+            )
         } else if (field.type === 'string') {
-            lines.push(`for (const v of ${accessor}) {`)
+            lines.push(`for (const v of (${accessor} ?? [])) {`)
             lines.push('  const _bl = strByteLen(v);')
             lines.push(`  s += ${tagSize} + varint32Size(_bl) + _bl;`)
             lines.push('}')
         } else if (field.type === 'bytes') {
-            lines.push(`for (const v of ${accessor}) {`)
+            lines.push(`for (const v of (${accessor} ?? [])) {`)
             lines.push(`  s += ${tagSize} + varint32Size(v.length) + v.length;`)
             lines.push('}')
         } else {
             lines.push(
-                `for (const v of ${accessor}) { s += ${tagSize} + ${scalarSizeExpr(field.type, 'v', int64As)}; }`
+                `for (const v of (${accessor} ?? [])) { s += ${tagSize} + ${scalarSizeExpr(field.type, 'v', int64As)}; }`
             )
         }
         return lines
@@ -938,10 +957,13 @@ export function generateSizeOfField(
     if (field.isMessage) {
         if (field.isRequired) {
             lines.push(
-                `if (${accessor} === undefined) { throw new Error('Missing required field: ${field.name}'); }`
+                `if (${accessor} == null) { throw new Error('Missing required field: ${field.name}'); }`
             )
         }
-        const cond = field.isRequired ? `${accessor} !== undefined` : check
+        // For required fields the throw above already narrows; for optional
+        // fields use the same `!= null` check used in encode so the I-peer
+        // null leak is handled.
+        const cond = field.isRequired ? `${accessor} != null` : check
         if (field.isGroup) {
             // Group: start_tag + content + end_tag (no length prefix)
             const endTagSize = computeTagBytes(field.number, WIRE_END_GROUP).length
@@ -1015,7 +1037,7 @@ export function generateEncodeToField(
     // Map field
     if (field.mapKeyType && field.mapValueType) {
         const lines: string[] = []
-        lines.push(`for (const [k, v] of ${accessor}) {`)
+        lines.push(`for (const [k, v] of (${accessor} ?? new Map())) {`)
         lines.push(`  ${tagWrite}`)
         // Compute entry size (need to know it for length prefix)
         lines.push('  let _es = 0;')
@@ -1095,47 +1117,49 @@ export function generateEncodeToField(
     if (field.label === 'repeated') {
         const lines: string[] = []
         if (field.packed && (isScalarType(field.type) || field.isEnum)) {
-            lines.push(`if (${accessor}.length > 0) {`)
+            lines.push(`if ((${accessor}?.length ?? 0) > 0) {`)
             lines.push(`  ${tagWrite}`)
             lines.push('  let _ps = 0;')
             if (field.isEnum) {
-                lines.push(`  for (const v of ${accessor}) { _ps += varint32Size(v); }`)
+                lines.push(`  for (const v of (${accessor} ?? [])) { _ps += varint32Size(v); }`)
             } else {
                 lines.push(
-                    `  for (const v of ${accessor}) { _ps += ${scalarSizeExpr(field.type, 'v', int64As)}; }`
+                    `  for (const v of (${accessor} ?? [])) { _ps += ${scalarSizeExpr(field.type, 'v', int64As)}; }`
                 )
             }
             lines.push('  p = writeVarint(_ps, buf, p);')
             if (field.isEnum) {
-                lines.push(`  for (const v of ${accessor}) { p = writeVarint(v, buf, p); }`)
+                lines.push(`  for (const v of (${accessor} ?? [])) { p = writeVarint(v, buf, p); }`)
             } else {
                 lines.push(
-                    `  for (const v of ${accessor}) { ${scalarWriteLines(field.type, 'v', int64As).join(' ')} }`
+                    `  for (const v of (${accessor} ?? [])) { ${scalarWriteLines(field.type, 'v', int64As).join(' ')} }`
                 )
             }
             lines.push('}')
         } else if (field.isMessage) {
-            lines.push(`for (const v of ${accessor}) {`)
+            lines.push(`for (const v of (${accessor} ?? [])) {`)
             lines.push(`  ${tagWrite}`)
             lines.push(`  const _ms = ${typeRef}.sizeOf(v);`)
             lines.push(`  p = writeVarint(_ms, buf, p); p = ${typeRef}.encodeTo(v, buf, p);`)
             lines.push('}')
         } else if (field.isEnum) {
-            lines.push(`for (const v of ${accessor}) { ${tagWrite} p = writeVarint(v, buf, p); }`)
+            lines.push(
+                `for (const v of (${accessor} ?? [])) { ${tagWrite} p = writeVarint(v, buf, p); }`
+            )
         } else if (field.type === 'string') {
-            lines.push(`for (const v of ${accessor}) {`)
+            lines.push(`for (const v of (${accessor} ?? [])) {`)
             lines.push(`  ${tagWrite}`)
             lines.push('  const _bl = strByteLen(v);')
             lines.push('  p = writeVarint(_bl, buf, p); strWrite(v, buf, p, _bl); p += _bl;')
             lines.push('}')
         } else if (field.type === 'bytes') {
-            lines.push(`for (const v of ${accessor}) {`)
+            lines.push(`for (const v of (${accessor} ?? [])) {`)
             lines.push(`  ${tagWrite}`)
             lines.push('  p = writeVarint(v.length, buf, p); p = writeBytes(v, buf, p);')
             lines.push('}')
         } else {
             lines.push(
-                `for (const v of ${accessor}) { ${tagWrite} ${scalarWriteLines(field.type, 'v', int64As).join(' ')} }`
+                `for (const v of (${accessor} ?? [])) { ${tagWrite} ${scalarWriteLines(field.type, 'v', int64As).join(' ')} }`
             )
         }
         return lines
@@ -1148,10 +1172,10 @@ export function generateEncodeToField(
     if (field.isMessage) {
         if (field.isRequired) {
             lines.push(
-                `if (${accessor} === undefined) { throw new Error('Missing required field: ${field.name}'); }`
+                `if (${accessor} == null) { throw new Error('Missing required field: ${field.name}'); }`
             )
         }
-        const cond = field.isRequired ? `${accessor} !== undefined` : check
+        const cond = field.isRequired ? `${accessor} != null` : check
         if (field.isGroup) {
             // Group: start_tag + content + end_tag (no length prefix)
             const endTagBytes = computeTagBytes(field.number, WIRE_END_GROUP)

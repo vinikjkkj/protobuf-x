@@ -127,7 +127,9 @@ describe('advanced field code generation cases', () => {
 
         const code = generateEncodeField(field, 'Msg').join('\n')
 
-        assert.ok(code.includes('msg.status !== undefined'))
+        // Loose `!= null` (catches both null and undefined) since the I-peer
+        // interface declares fields as `T | null`.
+        assert.ok(code.includes('msg.status != null'))
         assert.ok(code.includes('w.uint32(msg.status as number)'))
     })
 })

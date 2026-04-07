@@ -108,7 +108,7 @@ export function generateOneofEncodeLines(
     const accessor = `msg.${oneof.name}`
     for (const field of oneof.fields) {
         const typeRef = field.typeExpr ?? field.type
-        lines.push(`if (${accessor}.case === '${field.name}') {`)
+        lines.push(`if (${accessor}?.case === '${field.name}') {`)
         lines.push(`  w.raw(${descriptorConstName(messageTypeName, field.name)}.tag);`)
         if (field.isMessage && field.isGroup) {
             lines.push(`  ${typeRef}.encode(${accessor}.value as ${typeRef}, w);`)
@@ -207,7 +207,7 @@ export function generateOneofSizeOfLines(
         const wireType = getWireType(field)
         const tagBytes = computeTagBytes(field.number, wireType)
         const tagSize = tagBytes.length
-        lines.push(`if (${accessor}.case === '${field.name}') {`)
+        lines.push(`if (${accessor}?.case === '${field.name}') {`)
         if (field.isMessage) {
             lines.push(
                 `  const _ms = ${typeRef}.sizeOf(${accessor}.value as ${typeRef}); s += ${tagSize} + varint32Size(_ms) + _ms;`
@@ -274,7 +274,7 @@ export function generateOneofEncodeToLines(
         const tagWrite = tagBytes
             .map((b) => `buf[p++] = 0x${b.toString(16).padStart(2, '0')};`)
             .join(' ')
-        lines.push(`if (${accessor}.case === '${field.name}') {`)
+        lines.push(`if (${accessor}?.case === '${field.name}') {`)
         lines.push(`  ${tagWrite}`)
         if (field.isMessage) {
             lines.push(

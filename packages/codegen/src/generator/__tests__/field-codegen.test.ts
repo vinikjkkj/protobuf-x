@@ -440,7 +440,9 @@ describe('generateEncodeField', () => {
         const field = makeField({ name: 'tags', number: 4, type: 'string', label: 'repeated' })
         const lines = generateEncodeField(field, 'User')
         const code = lines.join('\n')
-        assert.ok(code.includes('for (const v of msg.tags)'))
+        // Repeated fields iterate over `accessor ?? []` so an explicit `null`
+        // from a POJO input (the I-peer allows `T[] | null`) is treated as empty.
+        assert.ok(code.includes('for (const v of (msg.tags ?? []))'))
         assert.ok(code.includes('w.string(v)'))
     })
 
@@ -448,7 +450,9 @@ describe('generateEncodeField', () => {
         const field = makeField({ name: 'address', number: 5, type: 'Address', isMessage: true })
         const lines = generateEncodeField(field, 'User')
         const code = lines.join('\n')
-        assert.ok(code.includes('msg.address !== undefined'))
+        // Loose `!= null` so explicit nulls/undefined from POJO inputs are
+        // both treated as missing. The IFoo peer interface allows `T | null`.
+        assert.ok(code.includes('msg.address != null'))
         assert.ok(code.includes('Address.encode'))
         assert.ok(code.includes('w.fork()'))
         assert.ok(code.includes('w.join'))
@@ -458,7 +462,9 @@ describe('generateEncodeField', () => {
         const field = makeField({ name: 'status', number: 6, type: 'Status', isEnum: true })
         const lines = generateEncodeField(field, 'User')
         const code = lines.join('\n')
-        assert.ok(code.includes('msg.status !== 0'))
+        // Loose `!= null` (catches null/undefined) plus the existing `!== 0`
+        // skip-default check.
+        assert.ok(code.includes('msg.status != null && msg.status !== 0'))
         assert.ok(code.includes('w.uint32(msg.status as number)'))
     })
 
@@ -472,7 +478,10 @@ describe('generateEncodeField', () => {
         })
         const lines = generateEncodeField(field, 'User')
         const code = lines.join('\n')
-        assert.ok(code.includes('msg.scores.length > 0'))
+        // Length check uses optional chaining with nullish coalescing so a
+        // null/undefined value (allowed by the I-peer interface) is treated
+        // as an empty array.
+        assert.ok(code.includes('(msg.scores?.length ?? 0) > 0'))
         assert.ok(code.includes('w.fork()'))
         assert.ok(code.includes('w.join()'))
     })

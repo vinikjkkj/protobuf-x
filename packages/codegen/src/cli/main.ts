@@ -20,7 +20,7 @@ import {
     type ParserModuleLike
 } from './schema.js'
 
-const VERSION = '0.1.0'
+const VERSION = '0.1.3'
 const PARSER_SOURCE_FALLBACKS = ['../../../parser/src/index.ts', '../../../../parser/src/index.ts']
 
 /**

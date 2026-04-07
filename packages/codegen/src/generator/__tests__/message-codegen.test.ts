@@ -42,14 +42,18 @@ describe('generateMessage', () => {
         assert.ok(code.includes('static readonly descriptor: MessageDescriptor'))
         assert.ok(code.includes("name: 'User'"))
 
-        // Should have static encode
-        assert.ok(code.includes('static encode(msg: User, w?: BinaryWriter): BinaryWriter'))
+        // Should have static encode. The param type is the I-peer interface
+        // (`IUser`) so plain POJOs satisfy it; the class itself is structurally
+        // a valid I-peer.
+        assert.ok(code.includes('static encode(msg: IUser, w?: BinaryWriter): BinaryWriter'))
         assert.ok(code.includes('if (w === undefined) {'))
         assert.ok(code.includes('User.sizeOf(msg)'))
         assert.ok(code.includes('User.encodeTo(msg, buf, 0)'))
-        assert.ok(code.includes("msg.name !== ''"))
+        // Skip-default checks use loose `!= null` so explicit nulls/undefined
+        // from POJO inputs are treated like missing.
+        assert.ok(code.includes("msg.name != null && msg.name !== ''"))
         assert.ok(code.includes('w.string(msg.name)'))
-        assert.ok(code.includes('msg.age !== 0'))
+        assert.ok(code.includes('msg.age != null && msg.age !== 0'))
         assert.ok(code.includes('w.int32(msg.age)'))
         assert.ok(code.includes('return w;'))
 
@@ -81,8 +85,10 @@ describe('generateMessage', () => {
 
         const code = generateMessage(msg)
 
-        // Message field should be optional (undefined default)
-        assert.ok(code.includes('address?: Address;'))
+        // Message field should be optional and use the I-peer interface
+        // (POJO inputs satisfy the field; class instance still satisfies it
+        // via structural compat with IAddress).
+        assert.ok(code.includes('address?: IAddress;'))
 
         // Encode should use fork/join for message field
         assert.ok(code.includes('Address.encode(msg.address, w)'))
@@ -106,8 +112,8 @@ describe('generateMessage', () => {
         // Repeated field should have array type and empty array default
         assert.ok(code.includes('tags: string[] = [];'))
 
-        // Encode should iterate
-        assert.ok(code.includes('for (const v of msg.tags)'))
+        // Encode should iterate (with `?? []` fallback for null/undefined POJO inputs)
+        assert.ok(code.includes('for (const v of (msg.tags ?? []))'))
 
         // Decode should push
         assert.ok(code.includes('msg.tags.push'))
@@ -159,9 +165,10 @@ describe('generateMessage', () => {
         // Regular field should still be present
         assert.ok(code.includes('id: number = 0;'))
 
-        // Encode should check case
-        assert.ok(code.includes("msg.value.case === 'success'"))
-        assert.ok(code.includes("msg.value.case === 'error'"))
+        // Encode should check case via optional chaining (the I-peer interface
+        // declares oneof fields as `T | null`, so the accessor may be null/undefined).
+        assert.ok(code.includes("msg.value?.case === 'success'"))
+        assert.ok(code.includes("msg.value?.case === 'error'"))
 
         // Decode should set discriminated union
         assert.ok(code.includes("case: 'success'"))
@@ -276,8 +283,8 @@ describe('generateMessage', () => {
 
         const code = generateMessage(msg)
 
-        // Encode: packed
-        assert.ok(code.includes('msg.values.length > 0'))
+        // Encode: packed (length check uses optional chaining for null safety)
+        assert.ok(code.includes('(msg.values?.length ?? 0) > 0'))
         assert.ok(code.includes('w.fork()'))
         assert.ok(code.includes('w.join()'))
 
@@ -294,8 +301,10 @@ describe('generateMessage', () => {
 
         const code = generateMessage(msg)
 
-        assert.ok(code.includes('users: User[] = [];'))
-        assert.ok(code.includes('for (const v of msg.users)'))
+        // Repeated message field uses the I-peer element type so POJOs in the
+        // array satisfy it; class instances still satisfy structurally.
+        assert.ok(code.includes('users: IUser[] = [];'))
+        assert.ok(code.includes('for (const v of (msg.users ?? []))'))
         assert.ok(code.includes('User.encode(v, w)'))
         assert.ok(code.includes('msg.users.push'))
         assert.ok(code.includes('User.decode'))

@@ -120,7 +120,7 @@ function tsToJs(tsSource: string): string {
                 continue
             }
         } else {
-            // Inside namespace: handle close, type aliases, and const assignments
+            // Inside namespace: handle close, type aliases, and const/import assignments
             if (trimmed === '}' && braceDepth === currentNamespace.depth + 1) {
                 braceDepth -= 1
                 currentNamespace = null
@@ -128,6 +128,15 @@ function tsToJs(tsSource: string): string {
             }
             // Drop `export type ...` lines entirely
             if (trimmed.startsWith('export type ')) {
+                continue
+            }
+            // Convert `export import X = Y;` to `NsName.X = Y;`. The TS-only
+            // `export import` form re-exports a merged value+type+namespace
+            // symbol; in JS we only need the runtime value reference, which
+            // is the same as the const assignment.
+            const importMatch = trimmed.match(/^export import (\w+)\s*=\s*([^;]+);$/)
+            if (importMatch) {
+                result.push(`${currentNamespace.name}.${importMatch[1]!} = ${importMatch[2]!};`)
                 continue
             }
             // Convert `export const X = Y;` to `NsName.X = Y;`
