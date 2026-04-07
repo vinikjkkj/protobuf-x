@@ -9,5 +9,10 @@
         "scripts/**/*.ts",
         "benchmarks/**/*.ts"
     ],
-    "exclude": ["**/dist/**", "**/node_modules/**", "benchmarks/generated/**"]
+    "exclude": [
+        "**/dist/**",
+        "**/node_modules/**",
+        "benchmarks/generated/**",
+        "benchmarks/generated-compare.bench.ts"
+    ]
 }
