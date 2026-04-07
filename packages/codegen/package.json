@@ -1,6 +1,6 @@
 {
     "name": "@protobuf-x/codegen",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "Code generator CLI + programmatic API for protobuf-x. Generates fast, type-safe TypeScript/JavaScript from .proto files.",
     "type": "module",
     "keywords": [

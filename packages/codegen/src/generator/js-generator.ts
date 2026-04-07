@@ -163,6 +163,11 @@ function tsToJs(tsSource: string): string {
 
         let transformed = line
             .replace(/extends ([A-Za-z_$][\w$]*)<[^>]+>/g, 'extends $1')
+            // Strip TS-only `implements IFoo[, IBar]` clause from class declarations
+            .replace(
+                /^(\s*export class [A-Za-z_$][\w$]*(?:\s+extends\s+[A-Za-z_$][\w$.]*)?)\s+implements\s+[A-Za-z_$][\w$.]*(?:\s*,\s*[A-Za-z_$][\w$.]*)*\s*\{/,
+                '$1 {'
+            )
             .replace(
                 /^(\s*)static readonly descriptor:\s*MessageDescriptor\s*=\s*\{$/,
                 '$1static descriptor = {'

@@ -8,7 +8,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { generateAndImportModule } from '../../__tests__/generated-module.js'
+import {
+    generateAndImportJsModule,
+    generateAndImportModule
+} from '../../__tests__/generated-module.js'
+import { generateJavaScript } from '../js-generator.js'
 import { generateTypeScript } from '../ts-generator.js'
 import type { ProtoFile } from '../ts-generator.js'
 
@@ -381,5 +385,119 @@ describe('Etapa 3: --int64-as flag', () => {
         assert.equal(back.choice.case, 'chosen')
         assert.equal(back.choice.value, 999)
         assert.equal(typeof back.choice.value, 'number')
+    })
+})
+
+describe('JS target: TS-only syntax stripping (regression)', () => {
+    it('strips `implements IFoo` from class declaration in .js output', () => {
+        const proto = makeProto([
+            {
+                name: 'User',
+                fields: [{ name: 'name', number: 1, type: 'string', label: 'optional' }],
+                oneofs: [],
+                nestedMessages: [],
+                nestedEnums: []
+            }
+        ])
+        const { js, dts } = generateJavaScript(proto)
+        // .js must NOT contain `implements IUser` (TS-only syntax)
+        assert.doesNotMatch(js, /implements\s+IUser/)
+        assert.match(js, /export class User extends \w+\s*\{/)
+        // .d.ts retains the `implements` clause
+        assert.match(dts, /class User extends \w+<User>\s+implements IUser \{/)
+    })
+
+    it('strips `implements` from nested message classes too', () => {
+        const proto = makeProto([
+            {
+                name: 'Outer',
+                fields: [],
+                oneofs: [],
+                nestedMessages: [
+                    {
+                        name: 'Inner',
+                        generatedName: 'Outer_Inner',
+                        fields: [{ name: 'x', number: 1, type: 'int32', label: 'optional' }],
+                        oneofs: [],
+                        nestedMessages: [],
+                        nestedEnums: []
+                    }
+                ],
+                nestedEnums: []
+            }
+        ])
+        const { js } = generateJavaScript(proto)
+        assert.doesNotMatch(js, /implements\s+I/)
+    })
+
+    it('generated .js loads without errors via dynamic import', async () => {
+        const proto = makeProto([
+            {
+                name: 'User',
+                fields: [
+                    { name: 'name', number: 1, type: 'string', label: 'optional' },
+                    { name: 'age', number: 2, type: 'int32', label: 'optional' }
+                ],
+                oneofs: [],
+                nestedMessages: [],
+                nestedEnums: []
+            }
+        ])
+        // Real ESM import — fails with SyntaxError if any TS-only syntax leaks
+        // through, fails with ReferenceError if any symbol isn't properly
+        // exported, and the import link itself walks every top-level statement.
+        const { module } = await generateAndImportJsModule(proto, 'js_import_user_pb.js')
+        const User = module['User'] as {
+            new (init?: Record<string, unknown>): { name: string; age: number }
+            encode(msg: unknown): { finish(): Uint8Array }
+            decode(buf: Uint8Array): { name: string; age: number }
+        }
+        assert.equal(typeof User, 'function')
+        // Round-trip to confirm the imported class actually works at runtime
+        const back = User.decode(User.encode(new User({ name: 'Alice', age: 30 })).finish())
+        assert.equal(back.name, 'Alice')
+        assert.equal(back.age, 30)
+    })
+
+    it('generated .js loads without errors for a message with int64 + nested + oneof', async () => {
+        const proto = makeProto([
+            {
+                name: 'M',
+                fields: [
+                    { name: 'count', number: 1, type: 'int64', label: 'optional' },
+                    {
+                        name: 'inner',
+                        number: 2,
+                        type: 'Inner',
+                        typeExpr: 'M_Inner',
+                        label: 'optional',
+                        isMessage: true
+                    },
+                    {
+                        name: 'chosen',
+                        number: 3,
+                        type: 'string',
+                        label: 'optional'
+                    }
+                ],
+                oneofs: [{ name: 'choice', fields: [] }],
+                nestedMessages: [
+                    {
+                        name: 'Inner',
+                        generatedName: 'M_Inner',
+                        fields: [{ name: 'x', number: 1, type: 'int32', label: 'optional' }],
+                        oneofs: [],
+                        nestedMessages: [],
+                        nestedEnums: []
+                    }
+                ],
+                nestedEnums: []
+            }
+        ])
+        // Wire up the oneof field reference
+        proto.messages[0]!.oneofs[0]!.fields = [proto.messages[0]!.fields[2]!]
+        const { module } = await generateAndImportJsModule(proto, 'js_import_complex_pb.js')
+        assert.equal(typeof module['M'], 'function')
+        assert.equal(typeof module['M_Inner'], 'function')
     })
 })

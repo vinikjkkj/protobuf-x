@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { generateJavaScript } from '../generator/js-generator.js'
 import { generateTypeScript } from '../generator/ts-generator.js'
 import type { ProtoFile, TsGeneratorOptions } from '../generator/ts-generator.js'
 
@@ -43,4 +44,31 @@ export async function generateAndImportModule(
 
 export function moduleDir(filePath: string): string {
     return dirname(filePath)
+}
+
+/**
+ * Generate `.js` (via `generateJavaScript`), write it to a temp dir, and
+ * dynamically import it. Used by the JS-target regression tests to verify
+ * the generated code is not just syntactically valid but actually loadable
+ * by the Node.js ESM loader (catches things like leaked TS-only syntax,
+ * bad imports, missing exports).
+ */
+export async function generateAndImportJsModule(
+    proto: ProtoFile,
+    fileName = 'generated_pb.js',
+    options?: Omit<TsGeneratorOptions, 'runtimePackage'>
+): Promise<{ filePath: string; module: Record<string, unknown>; js: string; dts: string }> {
+    const dir = mkdtempSync(join(tmpdir(), 'protobuf-x-generated-js-'))
+    const { js, dts } = generateJavaScript(proto, {
+        runtimePackage: runtimePackageSpecifier(dir),
+        ...options
+    })
+    const filePath = join(dir, fileName)
+    writeFileSync(filePath, js, 'utf-8')
+    return {
+        filePath,
+        module: await importGeneratedModule(filePath),
+        js,
+        dts
+    }
 }
