@@ -26,6 +26,25 @@ function fixturePath(name: string): string {
     return fileURLToPath(new URL(`../../../../../test-fixtures/${name}`, import.meta.url))
 }
 
+const projectRoot = fileURLToPath(new URL('../../../../../', import.meta.url))
+
+/**
+ * Run the CLI with cwd pinned to the project root. The CLI's
+ * `inferRootVirtualPath` uses `process.cwd()` to compute output path layout,
+ * so passing an absolute proto path with a different cwd (e.g. `npm --ws run
+ * test` runs from each workspace directory) would land output in the wrong
+ * place.
+ */
+async function runMain(args: string[]): Promise<number> {
+    const previousCwd = process.cwd()
+    process.chdir(projectRoot)
+    try {
+        return await main(args)
+    } finally {
+        process.chdir(previousCwd)
+    }
+}
+
 describe('CLI main', () => {
     it('generates executable TypeScript from a .proto file', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'protobuf-x-cli-'))
@@ -164,7 +183,7 @@ describe('CLI main', () => {
         const protoPath = fixturePath('all-types.proto')
 
         const exitCode = await withSilencedConsole(() =>
-            main([
+            runMain([
                 '--target',
                 'both',
                 '--out',

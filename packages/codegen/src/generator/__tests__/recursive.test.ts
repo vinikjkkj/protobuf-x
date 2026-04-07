@@ -30,6 +30,23 @@ async function silenced<T>(fn: () => Promise<T>): Promise<T> {
     }
 }
 
+/**
+ * Run the CLI with cwd pinned to the project root. The CLI's
+ * `inferRootVirtualPath` uses `process.cwd()` to compute output path layout,
+ * so passing an absolute proto path with a different cwd (e.g. `npm --ws run
+ * test` runs from each workspace directory) would land output in the wrong
+ * place. Pinning cwd here keeps the virtual path at `test-fixtures/<file>`.
+ */
+async function runMain(args: string[]): Promise<number> {
+    const previousCwd = process.cwd()
+    process.chdir(projectRoot)
+    try {
+        return await main(args)
+    } finally {
+        process.chdir(previousCwd)
+    }
+}
+
 describe('Recursive message types', () => {
     it('generates and runs self-referencing TreeNode', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'pb-recursive-'))
@@ -37,7 +54,7 @@ describe('Recursive message types', () => {
         const protoDir = join(out, 'test-fixtures')
 
         const exit = await silenced(() =>
-            main([
+            runMain([
                 '--target',
                 'ts',
                 '--out',
@@ -79,7 +96,7 @@ describe('Recursive message types', () => {
         const out = join(dir, 'out')
         const protoDir = join(out, 'test-fixtures')
 
-        const exit = await main([
+        const exit = await runMain([
             '--target',
             'ts',
             '--out',
@@ -120,7 +137,7 @@ describe('Recursive message types', () => {
         const protoDir = join(out, 'test-fixtures')
 
         const exit = await silenced(() =>
-            main([
+            runMain([
                 '--target',
                 'ts',
                 '--out',
@@ -133,7 +150,7 @@ describe('Recursive message types', () => {
 
         if (exit !== 0) {
             // Re-run without silencing to see the error
-            await main([
+            await runMain([
                 '--target',
                 'ts',
                 '--out',

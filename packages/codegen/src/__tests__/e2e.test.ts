@@ -27,17 +27,32 @@ async function withSilencedConsole<T>(run: () => Promise<T>): Promise<T> {
 async function generate(target: string, protoFile: string) {
     const dir = mkdtempSync(join(tmpdir(), 'pb-e2e-'))
     const out = join(dir, 'out')
-    const code = await withSilencedConsole(() =>
-        main([
-            '--target',
-            target,
-            '--out',
-            out,
-            '--runtime-package',
-            runtimeSpec,
-            join(fixturesDir, protoFile)
-        ])
-    )
+    // The CLI's `inferRootVirtualPath` uses `process.cwd()` to compute the
+    // virtual path of the input proto file (which determines the output
+    // directory layout). When tests run via `npm --ws run test`, cwd is the
+    // package directory, not the project root, so an absolute proto path
+    // would resolve to a `..`-prefixed virtual path and the output would land
+    // in an unexpected location. Pin cwd to the project root for the duration
+    // of the call so the virtual path becomes `test-fixtures/<file>.proto`
+    // regardless of where the test runner was launched from.
+    const previousCwd = process.cwd()
+    process.chdir(projectRoot)
+    let code: number
+    try {
+        code = await withSilencedConsole(() =>
+            main([
+                '--target',
+                target,
+                '--out',
+                out,
+                '--runtime-package',
+                runtimeSpec,
+                join(fixturesDir, protoFile)
+            ])
+        )
+    } finally {
+        process.chdir(previousCwd)
+    }
     assert.equal(code, 0, `CLI failed for ${protoFile}`)
     return { out, protoDir: join(out, 'test-fixtures') }
 }
