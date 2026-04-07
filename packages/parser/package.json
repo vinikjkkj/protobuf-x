@@ -51,7 +51,7 @@
     ],
     "scripts": {
         "build": "tsx ../../scripts/build.ts parser",
-        "test": "node --import tsx --test \"src/**/__tests__/**/*.test.ts\"",
+        "test": "node ../../scripts/run-tests.mjs \"src/**/__tests__/**/*.test.ts\"",
         "typecheck": "tsc --noEmit"
     },
     "sideEffects": false,
