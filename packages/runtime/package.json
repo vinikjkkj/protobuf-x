@@ -1,6 +1,6 @@
 {
     "name": "@protobuf-x/runtime",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "High-performance Protocol Buffers runtime for TypeScript & JavaScript. Zero dependencies, native bigint, faster and smaller than protobufjs.",
     "type": "module",
     "keywords": [

@@ -317,6 +317,7 @@ export class BinaryReader {
     fixed32(): number {
         const b = this.buf
         const p = this.pos
+        if (p + 4 > this.end) throw new RangeError('Truncated fixed32: not enough bytes')
         this.pos = p + 4
         return (b[p]! | (b[p + 1]! << 8) | (b[p + 2]! << 16) | (b[p + 3]! << 24)) >>> 0
     }
@@ -357,6 +358,7 @@ export class BinaryReader {
     float(): number {
         const b = this.buf
         const p = this.pos
+        if (p + 4 > this.end) throw new RangeError('Truncated float: not enough bytes')
         this.pos = p + 4
         u8f32[0] = b[p]!
         u8f32[1] = b[p + 1]!
@@ -369,6 +371,7 @@ export class BinaryReader {
     double(): number {
         const b = this.buf
         const p = this.pos
+        if (p + 8 > this.end) throw new RangeError('Truncated double: not enough bytes')
         this.pos = p + 8
         u8f64[0] = b[p]!
         u8f64[1] = b[p + 1]!
@@ -384,11 +387,13 @@ export class BinaryReader {
     /** Read a length-delimited bytes field (zero-copy subarray). */
     bytes(): Uint8Array {
         const b = this.buf
+        const end = this.end
         let p = this.pos
         let v = b[p++]!
         if (v < 0x80) {
             const start = p
             this.pos = start + v
+            if (this.pos > end) throw new RangeError('Truncated bytes field: length exceeds buffer')
             return b.subarray(start, this.pos)
         }
         let len = v & 0x7f
@@ -397,6 +402,7 @@ export class BinaryReader {
         if (v < 0x80) {
             const start = p
             this.pos = start + len
+            if (this.pos > end) throw new RangeError('Truncated bytes field: length exceeds buffer')
             return b.subarray(start, this.pos)
         }
         v = b[p++]!
@@ -404,6 +410,7 @@ export class BinaryReader {
         if (v < 0x80) {
             const start = p
             this.pos = start + len
+            if (this.pos > end) throw new RangeError('Truncated bytes field: length exceeds buffer')
             return b.subarray(start, this.pos)
         }
         v = b[p++]!
@@ -411,6 +418,7 @@ export class BinaryReader {
         if (v < 0x80) {
             const start = p
             this.pos = start + len
+            if (this.pos > end) throw new RangeError('Truncated bytes field: length exceeds buffer')
             return b.subarray(start, this.pos)
         }
         v = b[p++]!
@@ -418,12 +426,16 @@ export class BinaryReader {
         if (v < 0x80) {
             const start = p
             this.pos = start + (len >>> 0)
+            if (this.pos > end) throw new RangeError('Truncated bytes field: length exceeds buffer')
             return b.subarray(start, this.pos)
         }
         for (let i = 0; i < 5; i++) {
             if (b[p++]! < 0x80) {
                 const start = p
                 this.pos = start + (len >>> 0)
+                if (this.pos > end) {
+                    throw new RangeError('Truncated bytes field: length exceeds buffer')
+                }
                 return b.subarray(start, this.pos)
             }
         }
@@ -464,6 +476,9 @@ export class BinaryReader {
         }
         const start = p
         this.pos = start + len
+        if (this.pos > this.end) {
+            throw new RangeError('Truncated string field: length exceeds buffer')
+        }
         if (len === 0) return ''
         if (this.fast) return this.buf.utf8Slice!(start, this.pos)
         return this.slowString(start)
@@ -490,6 +505,7 @@ export class BinaryReader {
     /**
      * Skip a field based on its wire type.
      * Used for unknown fields to maintain forward compatibility.
+     * Throws on truncation (the new pos must not exceed the end).
      */
     skip(wireType: number): void {
         switch (wireType) {
@@ -498,14 +514,17 @@ export class BinaryReader {
                 break
             case WireType.Bit64:
                 this.pos += 8
+                if (this.pos > this.end) throw new RangeError('Truncated bit64 field')
                 break
             case WireType.LengthDelimited: {
                 const len = this.uint32()
                 this.pos += len
+                if (this.pos > this.end) throw new RangeError('Truncated length-delimited field')
                 break
             }
             case WireType.Bit32:
                 this.pos += 4
+                if (this.pos > this.end) throw new RangeError('Truncated bit32 field')
                 break
             case WireType.EndGroup:
                 throw new Error('Unexpected end-group tag')
@@ -514,8 +533,18 @@ export class BinaryReader {
         }
     }
 
-    /** Skip a complete field, including deprecated group bodies. */
+    /**
+     * Skip a complete field, including deprecated group bodies.
+     * Throws on truncation OR on the reserved field number 0 (proto spec).
+     * Field 0 in an unknown-field path is the canonical signal that the input
+     * is garbage rather than a valid protobuf payload, so we surface it as an
+     * error instead of silently advancing the cursor.
+     */
     skipTag(tag: number): void {
+        const fieldNumber = tag >>> 3
+        if (fieldNumber === 0) {
+            throw new RangeError(`Invalid protobuf tag: field number 0 is reserved (tag=${tag})`)
+        }
         const wireType = tag & 7
         switch (wireType) {
             case WireType.Varint:
@@ -523,15 +552,20 @@ export class BinaryReader {
                 return
             case WireType.Bit64:
                 this.pos += 8
+                if (this.pos > this.end) throw new RangeError('Truncated bit64 field')
                 return
             case WireType.LengthDelimited:
                 this.pos += this.uint32()
+                if (this.pos > this.end) {
+                    throw new RangeError('Truncated length-delimited field')
+                }
                 return
             case WireType.StartGroup:
-                this.skipGroup(tag >>> 3)
+                this.skipGroup(fieldNumber)
                 return
             case WireType.Bit32:
                 this.pos += 4
+                if (this.pos > this.end) throw new RangeError('Truncated bit32 field')
                 return
             case WireType.EndGroup:
                 throw new Error('Unexpected end-group tag')
@@ -548,6 +582,9 @@ export class BinaryReader {
         const len = this.uint32()
         const start = this.pos
         this.pos = start + len
+        if (this.pos > this.end) {
+            throw new RangeError('Truncated nested message: length exceeds buffer')
+        }
         return new BinaryReader(this.buf.subarray(start, this.pos))
     }
 
