@@ -119,6 +119,34 @@ describe('parseArgs', () => {
             (err: unknown) => err instanceof ArgError && /Missing value/.test(err.message)
         )
     })
+
+    it('should parse --no-json flag', () => {
+        const result = parseArgs(['-o', './gen', '--no-json', 'user.proto'])
+        assert.equal(result.noJson, true)
+    })
+
+    it('should parse --no-create flag', () => {
+        const result = parseArgs(['-o', './gen', '--no-create', 'user.proto'])
+        assert.equal(result.noCreate, true)
+    })
+
+    it('should parse --no-typeurl flag', () => {
+        const result = parseArgs(['-o', './gen', '--no-typeurl', 'user.proto'])
+        assert.equal(result.noTypeurl, true)
+    })
+
+    it('should parse --minimal flag', () => {
+        const result = parseArgs(['-o', './gen', '--minimal', 'user.proto'])
+        assert.equal(result.minimal, true)
+    })
+
+    it('should default all --no-* flags to false', () => {
+        const result = parseArgs(['-o', './gen', 'user.proto'])
+        assert.equal(result.noJson, false)
+        assert.equal(result.noCreate, false)
+        assert.equal(result.noTypeurl, false)
+        assert.equal(result.minimal, false)
+    })
 })
 
 describe('validateArgs', () => {
@@ -162,5 +190,9 @@ describe('getHelpText', () => {
         assert.ok(help.includes('--version'))
         assert.ok(help.includes('--import-path'))
         assert.ok(help.includes('--runtime-package'))
+        assert.ok(help.includes('--no-json'))
+        assert.ok(help.includes('--no-create'))
+        assert.ok(help.includes('--no-typeurl'))
+        assert.ok(help.includes('--minimal'))
     })
 })

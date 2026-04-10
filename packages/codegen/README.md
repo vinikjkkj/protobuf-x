@@ -3,7 +3,7 @@
 > Code generator CLI + programmatic API for [protobuf-x](https://github.com/vinikjkkj/protobuf-x). Generates fast, type-safe TypeScript/JavaScript from `.proto` files.
 
 - 🚀 **Generates the fastest protobuf code in JS** — wins 9-10/10 benchmarks vs `protobufjs`
-- 📦 **Smaller output** — defaults are tuned for size; `--no-json` shaves another ~10%
+- 📦 **Smaller output** — defaults are tuned for size; `--minimal` strips JSON, create, and typeurl for smallest binary-only output
 - 🔒 **Type-safe** — full TypeScript types with deep nested dot notation (`User.Profile.Theme.DARK`)
 - 🛠 **Programmatic API** — use from build scripts or bundler plugins, no CLI required
 - ✅ **Zero runtime deps** — depends only on `@protobuf-x/parser`
@@ -30,6 +30,9 @@ npx pbx [options] <file.proto ...>
 | `--import-path <path>`     | Add a directory to the proto import search path (repeatable)      |
 | `--runtime-package <name>` | Override runtime package (default `@protobuf-x/runtime`)          |
 | `--no-json`                | Skip `toJSON`/`fromJSON` + JSON interfaces                        |
+| `--no-create`              | Skip `Message.create()` factory (use `new Message()` instead)     |
+| `--no-typeurl`             | Skip `getTypeUrl` helper                                          |
+| `--minimal`                | Enable all `--no-*` flags (smallest binary-only output)           |
 | `--int64-as <repr>`        | 64-bit int representation: `bigint` (default), `number`, `string` |
 | `-h, --help`               | Show help                                                         |
 | `-v, --version`            | Show version                                                      |
@@ -54,7 +57,10 @@ protobuf-x --out gen schema.proto
 # Generate JavaScript + .d.ts files
 protobuf-x --target js --out gen schema.proto
 
-# Use the minimal runtime (auto-enables --no-json)
+# Minimal mode: skip create(), getTypeUrl(), and JSON methods
+protobuf-x --minimal --out gen schema.proto
+
+# Use the minimal runtime (auto-enables --minimal)
 protobuf-x --runtime-package @protobuf-x/runtime/minimal --out gen schema.proto
 
 # Compile a tree of files with import paths
@@ -112,6 +118,9 @@ interface GenerateOptions {
     target?: 'ts' | 'js' | 'both' // default 'ts'
     runtimePackage?: string // default '@protobuf-x/runtime'
     noJson?: boolean // default false; auto-true for /minimal runtime
+    noCreate?: boolean // default false; skip Message.create() factory
+    noTypeurl?: boolean // default false; skip getTypeUrl helper
+    minimal?: boolean // default false; enables all --no-* flags
     int64As?: 'bigint' | 'number' | 'string' // default 'bigint'
     importPaths?: string[] // additional proto import search paths
     outDir?: string // joined with relative output paths

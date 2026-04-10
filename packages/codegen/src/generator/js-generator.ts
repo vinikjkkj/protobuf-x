@@ -208,6 +208,22 @@ function tsToJs(tsSource: string): string {
                 'static encodeTo(msg, buf, p) {'
             )
             .replace(/toBinary\(\):\s*Uint8Array\s*\{/, 'toBinary() {')
+            .replace(
+                /static create\(values\?\s*:\s*[^)]+\):\s*[\w$.]+\s*\{/,
+                'static create(values) {'
+            )
+            .replace(
+                /static encodeDelimited\(msg:\s*[^,]+,\s*w\?\s*:\s*BinaryWriter\):\s*BinaryWriter\s*\{/,
+                'static encodeDelimited(msg, w) {'
+            )
+            .replace(
+                /static decodeDelimited\(input:\s*Uint8Array(?:,\s*length\?\s*:\s*number)?\):\s*[\w$.]+\s*\{/,
+                'static decodeDelimited(input, length) {'
+            )
+            .replace(
+                /static getTypeUrl\(baseTypeUrl\?\s*:\s*string\):\s*string\s*\{/,
+                'static getTypeUrl(baseTypeUrl) {'
+            )
             .replace(/static toJSON\(msg:\s*[^)]+\)(?::\s*[\w$.]+)?\s*\{/, 'static toJSON(msg) {')
             .replace(
                 /static fromJSON\(json:\s*[\w$.]+\)(?::\s*[\w$.]+)?\s*\{/,
@@ -396,6 +412,10 @@ function tsToDts(tsSource: string): string {
                 trimmed.startsWith('static decodeFrom(') ||
                 trimmed.startsWith('static sizeOf(') ||
                 trimmed.startsWith('static encodeTo(') ||
+                trimmed.startsWith('static create(') ||
+                trimmed.startsWith('static encodeDelimited(') ||
+                trimmed.startsWith('static decodeDelimited(') ||
+                trimmed.startsWith('static getTypeUrl(') ||
                 trimmed.startsWith('static toJSON(') ||
                 trimmed.startsWith('static fromJSON(') ||
                 trimmed.startsWith('static verify(') ||

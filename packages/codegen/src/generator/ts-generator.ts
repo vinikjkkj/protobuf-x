@@ -49,6 +49,21 @@ export interface TsGeneratorOptions {
      */
     noJson?: boolean
     /**
+     * Skip generating Message.create() static factory method.
+     * Reduces output size; use `new Message()` instead.
+     */
+    noCreate?: boolean
+    /**
+     * Skip generating getTypeUrl helper.
+     * Reduces output size; only needed for google.protobuf.Any interop.
+     */
+    noTypeurl?: boolean
+    /**
+     * Minimal mode: enables all --no-* flags at once for smallest
+     * possible binary-only output.
+     */
+    minimal?: boolean
+    /**
      * JS representation for 64-bit integer fields. Defaults to `'bigint'`
      * (full precision, fastest). Use `'number'` for protobufjs interop
      * (loses precision above 2^53) or `'string'` for safe JSON interop.
@@ -119,10 +134,13 @@ function collectImplicitPresenceFields(messages: readonly ProtoMessage[]): strin
  */
 export function generateTypeScript(proto: ProtoFile, options?: TsGeneratorOptions): string {
     const runtimePkg = options?.runtimePackage ?? '@protobuf-x/runtime'
-    // Auto-detect minimal runtime: paths containing `/minimal` skip JSON gen by default.
-    // An explicit `options.noJson === true` also enables it regardless of runtime path.
+    // Auto-detect minimal runtime: paths containing `/minimal` enable minimal mode.
     const autoMinimal = /\/minimal(\.[jt]s)?$/.test(runtimePkg)
-    const noJson = options?.noJson === true || autoMinimal
+    // --minimal flag enables all --no-* options at once
+    const minimal = options?.minimal === true || autoMinimal
+    const noJson = options?.noJson === true || minimal
+    const noCreate = options?.noCreate === true || minimal
+    const noTypeurl = options?.noTypeurl === true || minimal
     const t = new CodeTemplate()
 
     // Header comment
@@ -225,8 +243,9 @@ export function generateTypeScript(proto: ProtoFile, options?: TsGeneratorOption
 
     // Generate messages
     const int64As: Int64Mode = options?.int64As ?? 'bigint'
+    const msgOptions = { noJson, noCreate, noTypeurl, int64As }
     for (const msg of proto.messages) {
-        t.raw(generateMessage(msg, proto.packageName, [], { noJson, int64As }))
+        t.raw(generateMessage(msg, proto.packageName, [], msgOptions))
         t.blank()
     }
 

@@ -184,7 +184,8 @@ Reproduce: `node --import tsx benchmarks/generated-compare.bench.ts`
 ### Codegen optimizations
 
 - **Compact field descriptors** — defaults (`packed: false`, `rule: SINGULAR`, redundant `jsonName`) omitted
-- **`--no-json` flag** — strips `toJSON`/`fromJSON` + JSON interfaces (auto-enabled with minimal runtime)
+- **`--minimal` flag** — strips `create()`, `getTypeUrl()`, `toJSON`/`fromJSON` + JSON interfaces (auto-enabled with minimal runtime)
+- **`--no-json` / `--no-create` / `--no-typeurl`** — individual stripping flags for fine-grained control
 - **Single-field fast path** — only emitted for sparse messages with >30 fields
 - **Class+namespace merge** — `User.Profile` works as both type and value via TS declaration merging
 - **Tree-shakeable** — minimal runtime entry point includes only encode/decode (3.4 KB brotli)
@@ -211,7 +212,7 @@ import { Message, BinaryReader, BinaryWriter } from '@protobuf-x/runtime/minimal
 ```
 
 When the codegen sees `--runtime-package @protobuf-x/runtime/minimal`, it auto-enables
-`--no-json` and skips generating `toJSON`/`fromJSON` methods + interfaces.
+`--minimal` mode, skipping `create()`, `getTypeUrl()`, `toJSON`/`fromJSON` methods + interfaces.
 
 ---
 
@@ -230,6 +231,9 @@ pbx [options] <file.proto ...>
 | `--import-path <path>`     | Add a directory to the proto import search path (repeatable)      |
 | `--runtime-package <name>` | Override runtime package (default `@protobuf-x/runtime`)          |
 | `--no-json`                | Skip `toJSON`/`fromJSON` + JSON interfaces                        |
+| `--no-create`              | Skip `Message.create()` factory (use `new Message()` instead)     |
+| `--no-typeurl`             | Skip `getTypeUrl` helper                                          |
+| `--minimal`                | Enable all `--no-*` flags (smallest binary-only output)           |
 | `--int64-as <repr>`        | 64-bit int representation: `bigint` (default), `number`, `string` |
 | `-h, --help`               | Show help                                                         |
 | `-v, --version`            | Show version                                                      |
@@ -257,7 +261,10 @@ protobuf-x --target js --out gen schema.proto
 # Both .ts and .js + .d.ts
 protobuf-x --target both --out gen schema.proto
 
-# Use minimal runtime (auto-enables --no-json)
+# Minimal mode: skip create(), getTypeUrl(), and JSON methods
+protobuf-x --minimal --out gen schema.proto
+
+# Use minimal runtime (auto-enables --minimal)
 protobuf-x --runtime-package @protobuf-x/runtime/minimal --out gen schema.proto
 
 # Compile multiple files with import paths

@@ -83,6 +83,9 @@ export async function main(argv: string[]): Promise<number> {
                             outFile
                         ),
                         noJson: args.noJson,
+                        noCreate: args.noCreate,
+                        noTypeurl: args.noTypeurl,
+                        minimal: args.minimal,
                         int64As: args.int64As
                     }
                     let tsSource = generateTypeScript(loaded.proto, generatorOptions)
@@ -107,6 +110,9 @@ export async function main(argv: string[]): Promise<number> {
                             jsOutFile
                         ),
                         noJson: args.noJson,
+                        noCreate: args.noCreate,
+                        noTypeurl: args.noTypeurl,
+                        minimal: args.minimal,
                         int64As: args.int64As
                     }
                     const { js, dts } = generateJavaScript(loaded.proto, generatorOptions)

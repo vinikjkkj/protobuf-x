@@ -18,6 +18,21 @@ export interface ParsedArgs {
      */
     noJson: boolean
     /**
+     * Skip generating Message.create() static factory method.
+     * Reduces output size; use `new Message()` instead.
+     */
+    noCreate: boolean
+    /**
+     * Skip generating getTypeUrl helper.
+     * Reduces output size; only needed for google.protobuf.Any interop.
+     */
+    noTypeurl: boolean
+    /**
+     * Minimal mode: enables --no-json, --no-create, --no-typeurl
+     * all at once for smallest possible binary-only output.
+     */
+    minimal: boolean
+    /**
      * JS representation for 64-bit integer fields (int64/uint64/sint64/fixed64/sfixed64).
      *  - 'bigint' (default): native BigInt — full precision, fastest
      *  - 'number':           JS number — easy interop, loses precision above 2^53
@@ -49,8 +64,15 @@ Options:
       --import-path <path>     Additional import search path (can be repeated)
       --runtime-package <name> Override runtime package name
                                (default: "@protobuf-x/runtime")
-      --no-json                Skip generating toJSON/fromJSON + JSON interfaces
-                               (auto-enabled when targeting @protobuf-x/runtime/minimal)
+      --no-json                Skip toJSON/fromJSON + JSON interfaces
+                               (auto-enabled with --minimal or @protobuf-x/runtime/minimal)
+      --no-create              Skip Message.create() factory (use new Message() instead)
+                               (auto-enabled with --minimal or @protobuf-x/runtime/minimal)
+      --no-typeurl             Skip getTypeUrl helper
+                               (auto-enabled with --minimal or @protobuf-x/runtime/minimal)
+      --minimal                Enable all --no-* flags above (smallest binary-only output)
+                               Note: @protobuf-x/runtime/minimal also auto-enables --no-json,
+                               --no-create, --no-typeurl
       --int64-as <repr>        JS representation for 64-bit integer fields:
                                "bigint" (default), "number", or "string"
   -h, --help                   Show this help message
@@ -59,6 +81,7 @@ Options:
 Examples:
   protobuf-x -o ./gen ./protos/user.proto
   pbx -o ./gen --target both --int64-as number ./protos/*.proto
+  pbx -o ./gen --minimal ./protos/*.proto
 `.trim()
 
 export function getHelpText(): string {
@@ -72,6 +95,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
         importPaths: [],
         runtimePackage: '@protobuf-x/runtime',
         noJson: false,
+        noCreate: false,
+        noTypeurl: false,
+        minimal: false,
         int64As: 'bigint',
         files: [],
         help: false,
@@ -140,6 +166,24 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
         if (arg === '--no-json') {
             result.noJson = true
+            i++
+            continue
+        }
+
+        if (arg === '--no-create') {
+            result.noCreate = true
+            i++
+            continue
+        }
+
+        if (arg === '--no-typeurl') {
+            result.noTypeurl = true
+            i++
+            continue
+        }
+
+        if (arg === '--minimal') {
+            result.minimal = true
             i++
             continue
         }

@@ -70,12 +70,18 @@ export interface GenerateOptions {
     target?: GenerateTarget
     /**
      * Runtime package import specifier. Defaults to `'@protobuf-x/runtime'`.
-     * Use `'@protobuf-x/runtime/minimal'` for the encode-only minimal runtime
-     * (auto-enables `noJson`).
+     * Use `'@protobuf-x/runtime/minimal'` for the minimal runtime
+     * (auto-enables `minimal` mode which implies `noJson`, `noCreate`, `noTypeurl`).
      */
     runtimePackage?: string
     /** Skip generating toJSON/fromJSON + JSON interfaces. */
     noJson?: boolean
+    /** Skip generating Message.create() static factory method. */
+    noCreate?: boolean
+    /** Skip generating getTypeUrl helper. */
+    noTypeurl?: boolean
+    /** Minimal mode: enables all --no-* flags at once. */
+    minimal?: boolean
     /**
      * JS representation for 64-bit integer fields. Defaults to `'bigint'`.
      *  - `'bigint'`: native BigInt — full precision, fastest
@@ -140,7 +146,12 @@ export interface GenerateError {
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
     const target: GenerateTarget = options.target ?? 'ts'
     const runtimePackage = options.runtimePackage ?? '@protobuf-x/runtime'
-    const noJson = options.noJson === true || /\/minimal(\.[jt]s)?$/.test(runtimePackage)
+    // Auto-detect minimal runtime: paths containing `/minimal` enable minimal mode.
+    const autoMinimal = /\/minimal(\.[jt]s)?$/.test(runtimePackage)
+    const minimal = options.minimal === true || autoMinimal
+    const noJson = options.noJson === true || minimal
+    const noCreate = options.noCreate === true || minimal
+    const noTypeurl = options.noTypeurl === true || minimal
     const int64As = options.int64As ?? 'bigint'
     const outDir = options.outDir ?? ''
     const parserModule = options.parser ?? (await loadParserModule())
@@ -193,7 +204,13 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
                     const tsRelPath = getOutputPath(loaded.virtualPath)
                     const tsAbsPath = outDir ? path.join(outDir, tsRelPath) : tsRelPath
                     if (!seenPaths.has(tsAbsPath)) {
-                        const opts = { runtimePackage, noJson, int64As }
+                        const opts = {
+                            runtimePackage,
+                            noJson,
+                            noCreate,
+                            noTypeurl,
+                            int64As
+                        }
                         let tsSource = generateTypeScript(loaded.proto, opts)
                         const candidates = analyzeInlineCandidates(loaded.proto)
                         tsSource = applyInlineOptimizations(tsSource, candidates)
@@ -206,7 +223,13 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
                     const jsAbsPath = outDir ? path.join(outDir, paths.js) : paths.js
                     const dtsAbsPath = outDir ? path.join(outDir, paths.dts) : paths.dts
                     if (!seenPaths.has(jsAbsPath)) {
-                        const opts = { runtimePackage, noJson, int64As }
+                        const opts = {
+                            runtimePackage,
+                            noJson,
+                            noCreate,
+                            noTypeurl,
+                            int64As
+                        }
                         const { js, dts } = generateJavaScript(loaded.proto, opts)
                         files.push({ path: jsAbsPath, content: js })
                         files.push({ path: dtsAbsPath, content: dts })

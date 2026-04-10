@@ -72,6 +72,10 @@ export type Int64Mode = 'bigint' | 'number' | 'string'
 export interface MessageCodegenOptions {
     /** Skip generating toJSON/fromJSON methods + JSON interfaces + JSON namespace aliases. */
     noJson?: boolean
+    /** Skip generating Message.create() static factory method. */
+    noCreate?: boolean
+    /** Skip generating getTypeUrl helper. */
+    noTypeurl?: boolean
     /** JS representation for 64-bit integer fields. Defaults to 'bigint'. */
     int64As?: Int64Mode
 }
@@ -83,6 +87,8 @@ export function generateMessage(
     options: MessageCodegenOptions = {}
 ): string {
     const noJson = options.noJson === true
+    const noCreate = options.noCreate === true
+    const noTypeurl = options.noTypeurl === true
     const int64As: Int64Mode = options.int64As ?? 'bigint'
     const t = new CodeTemplate()
     const generatedName = message.generatedName ?? message.name
@@ -723,6 +729,27 @@ export function generateMessage(
             })
 
             t.blank()
+
+            // Static create() factory — protobufjs-compatible ergonomics.
+            // Skipped when --no-create or --minimal.
+            if (!noCreate) {
+                t.block(`static create(values?: ${interfaceName}): ${generatedName} {`, () => {
+                    t.line(`return new ${generatedName}(values);`)
+                })
+                t.blank()
+            }
+
+            // TypeUrl helpers — used by google.protobuf.Any packing.
+            // Skipped when --no-typeurl or --minimal.
+            if (!noTypeurl) {
+                t.block(`static getTypeUrl(baseTypeUrl?: string): string {`, () => {
+                    t.block(`if (baseTypeUrl !== undefined) {`, () => {
+                        t.line(`return \`$\{baseTypeUrl}/${fqName}\`;`)
+                    })
+                    t.line(`return \`type.googleapis.com/${fqName}\`;`)
+                })
+                t.blank()
+            }
 
             if (!noJson) {
                 // Static toJSON — accepts the I-peer (see encode comment). Uses jsonName for keys.

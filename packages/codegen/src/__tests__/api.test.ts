@@ -60,15 +60,68 @@ describe('programmatic API: generate()', () => {
         assert.doesNotMatch(f.content, /export interface UserJSON/)
     })
 
-    it('auto-enables noJson when runtime-package targets minimal', async () => {
+    it('honors --no-create: omits static create()', async () => {
+        const result = await generate({
+            sources: [{ name: 'user.proto', content: PROTO_SOURCE }],
+            target: 'ts',
+            noCreate: true
+        })
+        const f = result.files[0]!
+        assert.doesNotMatch(f.content, /static create\(/)
+    })
+
+    it('honors --minimal: omits toJSON, create, and JSON interfaces', async () => {
+        const result = await generate({
+            sources: [{ name: 'user.proto', content: PROTO_SOURCE }],
+            target: 'js',
+            minimal: true
+        })
+        const js = result.files.find((f) => f.path.endsWith('.js'))!
+        const dts = result.files.find((f) => f.path.endsWith('.d.ts'))!
+        assert.doesNotMatch(js.content, /static toJSON/)
+        assert.doesNotMatch(js.content, /static fromJSON/)
+        assert.doesNotMatch(js.content, /static create\(/)
+        assert.doesNotMatch(dts.content, /UserJSON/)
+    })
+
+    it('auto-enables minimal when runtime-package targets /minimal', async () => {
         const result = await generate({
             sources: [{ name: 'user.proto', content: PROTO_SOURCE }],
             target: 'ts',
             runtimePackage: '@protobuf-x/runtime/minimal'
         })
         const f = result.files[0]!
+        // minimal auto-enables noJson, noCreate, and noTypeurl
         assert.doesNotMatch(f.content, /static toJSON/)
+        assert.doesNotMatch(f.content, /static fromJSON/)
+        assert.doesNotMatch(f.content, /static create\(/)
+        assert.doesNotMatch(f.content, /static getTypeUrl/)
         assert.match(f.content, /from '@protobuf-x\/runtime\/minimal'/)
+    })
+
+    it('getTypeUrl respects empty string prefix in generated JS', async () => {
+        // When noTypeurl is NOT set, getTypeUrl should accept '' as a valid prefix
+        const result = await generate({
+            sources: [{ name: 'user.proto', content: PROTO_SOURCE }],
+            target: 'js',
+            runtimePackage: '@protobuf-x/runtime'
+        })
+        const js = result.files.find((f) => f.path.endsWith('.js'))!
+        // Should have getTypeUrl with !== undefined check (not truthy)
+        assert.match(js.content, /baseTypeUrl !== undefined/)
+    })
+
+    it('auto-minimal with /minimal runtime disables create, typeurl, and json', async () => {
+        const result = await generate({
+            sources: [{ name: 'user.proto', content: PROTO_SOURCE }],
+            target: 'js',
+            runtimePackage: '@protobuf-x/runtime/minimal'
+        })
+        const js = result.files.find((f) => f.path.endsWith('.js'))!
+        assert.doesNotMatch(js.content, /static toJSON/)
+        assert.doesNotMatch(js.content, /static fromJSON/)
+        assert.doesNotMatch(js.content, /static create\(/)
+        assert.doesNotMatch(js.content, /static getTypeUrl/)
     })
 
     it('respects outDir for output paths', async () => {
